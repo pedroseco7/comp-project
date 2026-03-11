@@ -3,28 +3,30 @@
     #include <string.h>
     int cur_line = 1;
     int cur_col = 1;
-
+    int start_line = 1;
+    int start_col = 1;
+    
     int verbose = 0;
+    int string_with_error = 0;
 
     char string_buf[4096];
-    int string_buf_len;
 
-    int start_line, start_col = 1;
-
-    #define YY_USER_ACTION \
-        for(int i=0; i < yyleng; i++){ \
-            if(yytext[i] == '\n'){ \
-                cur_line++; \
-                cur_col = 0; \
-            }else{ \
-                cur_col++; \
-            }\
-        }
+    #define YY_USER_ACTION cur_col += yyleng;
 %}
 
 %option noyywrap
 
-BOOLLIT                          "true"|"false"
+IGNORE                          [ \t\f]
+NEWLINE                         "\r\n"|"\n"|"\r" 
+
+digit                           [0-9]
+DigitSeq                        [0-9]([0-9_]*[0-9])?
+EXPONENT                        [eE][+-]?{DigitSeq}+
+
+letter                          [a-zA-Z_$]
+escape                          [fnrt\"\\]
+
+BOOLLLIT                         "true"|"false"
 AND                             "&&"
 ASSIGN                          "="
 STAR                            "*"
@@ -69,10 +71,6 @@ VOID                            "void"
 WHILE                           "while"
 RESERVED                        "++"|"--"|"null"|"Integer"|"System"|"abstract"|"assert"|"break"|"byte"|"case"|"catch"|"char"|"const"|"continue"|"default"|"do"|"enum"|"extends"|"final"|"finally"|"float"|"for"|"goto"|"implements"|"import"|"instanceof"|"interface"|"long"|"native"|"new"|"private"|"protected"|"short"|"strictfp"|"super"|"switch"|"synchronized"|"this"|"throw"|"throws"|"transient"|"try"|"volatile"|"_"
 
-digit   [0-9]
-letter  [a-zA-Z_$]
-whitespace [ \t\r\n\f]
-escape [fnrt\"\\]
 
 %x MULTI_COMMENT
 %x STRING
@@ -123,30 +121,35 @@ escape [fnrt\"\\]
 {WHILE}                         { if(verbose) printf("WHILE\n"); }
 {RESERVED}                      { if(verbose) printf("RESERVED(%s)\n", yytext); }
 
-{whitespace}                    { }
-{digit}+                        { if(verbose) printf("NATURAL(%s)\n", yytext); }
-{digit}*"."{digit}+             { if(verbose) printf("DECIMAL(%s)\n", yytext); }
+0|[1-9]([0-9_]*[0-9])?                  { if(verbose) printf("NATURAL(%s)\n", yytext); }
+{DigitSeq}"."({DigitSeq})?({EXPONENT})? { if(verbose) printf("DECIMAL(%s)\n", yytext); }
+"."{DigitSeq}({EXPONENT})?              { if(verbose) printf("DECIMAL(%s)\n", yytext); }
+{DigitSeq}{EXPONENT}                    { if(verbose) printf("DECIMAL(%s)\n", yytext); }
+
 {letter}({digit}|{letter})*     { if(verbose) printf("IDENTIFIER(%s)\n", yytext); }
 
-"//".*                          { /* comentário de linha: ignorar tudo até ao fim da linha */ }
+{IGNORE}                        { }
+{NEWLINE}                       { cur_line++; cur_col = 1; }
 
-"/*"                            { start_line = cur_line; start_col = cur_col - 1; BEGIN(MULTI_COMMENT); }
+"//".*                          { }
+
+"/*"                            { start_line = cur_line; start_col = cur_col - yyleng; BEGIN(MULTI_COMMENT); }
 <MULTI_COMMENT>"*/"             { BEGIN(INITIAL); }
-<MULTI_COMMENT>\n               { ; }
-<MULTI_COMMENT>.                { ; }
+<MULTI_COMMENT>{NEWLINE}        { cur_line++; cur_col = 1; }
 <MULTI_COMMENT><<EOF>>          { printf("Line %d, col %d: unterminated comment\n", start_line, start_col); return 0; }
+<MULTI_COMMENT>.                { }
 
-"\""                            { start_line = cur_line; start_col = cur_col; string_buf_len = 0; string_buf[0] = '\0'; BEGIN(STRING); }
+"\""                            { start_line = cur_line; start_col = cur_col - yyleng; string_buf[0] = '\0'; string_with_error = 0; BEGIN(STRING); }
 <STRING>"\\"{escape}            { strcat(string_buf, yytext); }
-<STRING>"\\".                   { printf("Line %d, col %d: invalid escape sequence (%s)\n", cur_line, cur_col - (int)yyleng + 1, yytext); strcat(string_buf, yytext); }
-<STRING>"\""                    { if(verbose) printf("STRLIT(\"%s\")\n", string_buf); BEGIN(INITIAL); }
-<STRING>\n                      { printf("Line %d, col %d: unterminated string literal\n", start_line, start_col); BEGIN(INITIAL); }
+<STRING>"\\"[^\n\r]             { printf("Line %d, col %d: invalid escape sequence (%s)\n", cur_line, cur_col - (int)yyleng, yytext); string_with_error = 1; }
+<STRING>"\\"                    { printf("Line %d, col %d: invalid escape sequence (\\)\n", cur_line, cur_col - (int)yyleng); string_with_error = 1; }
+<STRING>{NEWLINE}               { printf("Line %d, col %d: unterminated string literal\n", start_line, start_col); cur_line++; cur_col = 1; BEGIN(INITIAL); }
+<STRING>\"                      { if(verbose && !string_with_error) printf("STRLIT(\"%s\")\n", string_buf); BEGIN(INITIAL); }
 <STRING><<EOF>>                 { printf("Line %d, col %d: unterminated string literal\n", start_line, start_col); return 0; }
 <STRING>.                       { strcat(string_buf, yytext); }
 
+.                               { printf("Line %d, col %d: illegal character (%s)\n", cur_line, cur_col - (int)yyleng, yytext); }
 <<EOF>>                         { return 0; }
-
-.                               { printf("Line %d, col %d: illegal character (%s)\n", cur_line, cur_col, yytext); }
 %%
 
 extern int yylex();
@@ -155,7 +158,7 @@ int main(int argc, char **argv) {
         if (strcmp(argv[1], "-l") == 0) {
             verbose = 1;
         } else if (strcmp(argv[1], "-e1") == 0) {
-            verbose = 0;  // erros lexicais também precisam de output
+            verbose = 0;
         }
     }
     yylex();    /* run the lexical analysis automaton */
