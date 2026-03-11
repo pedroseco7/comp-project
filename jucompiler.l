@@ -26,7 +26,7 @@ EXPONENT                        [eE][+-]?{DigitSeq}+
 letter                          [a-zA-Z_$]
 escape                          [fnrt\"\\]
 
-BOOLLLIT                         "true"|"false"
+BOOLLIT                         "true"|"false"
 AND                             "&&"
 ASSIGN                          "="
 STAR                            "*"
@@ -69,7 +69,7 @@ STATIC                          "static"
 STRING                          "String"
 VOID                            "void"
 WHILE                           "while"
-RESERVED                        "++"|"--"|"null"|"Integer"|"System"|"abstract"|"assert"|"break"|"byte"|"case"|"catch"|"char"|"const"|"continue"|"default"|"do"|"enum"|"extends"|"final"|"finally"|"float"|"for"|"goto"|"implements"|"import"|"instanceof"|"interface"|"long"|"native"|"new"|"private"|"protected"|"short"|"strictfp"|"super"|"switch"|"synchronized"|"this"|"throw"|"throws"|"transient"|"try"|"volatile"|"_"
+RESERVED                        "++"|"--"|"null"|"Integer"|"System"|"abstract"|"assert"|"break"|"byte"|"case"|"catch"|"char"|"const"|"continue"|"default"|"do"|"enum"|"extends"|"final"|"finally"|"float"|"for"|"goto"|"implements"|"import"|"instanceof"|"interface"|"long"|"native"|"new"|"private"|"protected"|"short"|"strictfp"|"super"|"switch"|"synchronized"|"this"|"throw"|"throws"|"transient"|"try"|"volatile"|"_"|"package"
 
 
 %x MULTI_COMMENT
