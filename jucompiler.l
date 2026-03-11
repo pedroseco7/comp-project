@@ -24,7 +24,7 @@
 
 %option noyywrap
 
-BOOLIT                          "true"|"false"
+BOOLLIT                          "true"|"false"
 AND                             "&&"
 ASSIGN                          "="
 STAR                            "*"
@@ -67,11 +67,7 @@ STATIC                          "static"
 STRING                          "String"
 VOID                            "void"
 WHILE                           "while"
-BLANKID                         "_"
-PACKAGE                         "package"
-VAR                             "var"
-FLOAT32                         "float32"
-RESERVED                        "++"|"--"|"null"|"Integer"|"System"|"abstract"|"assert"|"break"|"byte"|"case"|"catch"|"char"|"const"|"continue"|"default"|"do"|"enum"|"extends"|"final"|"finally"|"float"|"for"|"goto"|"implements"|"import"|"instanceof"|"interface"|"long"|"native"|"new"|"private"|"protected"|"short"|"strictfp"|"super"|"switch"|"synchronized"|"this"|"throw"|"throws"|"transient"|"try"|"volatile"
+RESERVED                        "++"|"--"|"null"|"Integer"|"System"|"abstract"|"assert"|"break"|"byte"|"case"|"catch"|"char"|"const"|"continue"|"default"|"do"|"enum"|"extends"|"final"|"finally"|"float"|"for"|"goto"|"implements"|"import"|"instanceof"|"interface"|"long"|"native"|"new"|"private"|"protected"|"short"|"strictfp"|"super"|"switch"|"synchronized"|"this"|"throw"|"throws"|"transient"|"try"|"volatile"|"_"
 
 digit   [0-9]
 letter  [a-zA-Z_$]
@@ -82,7 +78,7 @@ escape [fnrt\"\\]
 %x STRING
 %%
 
-{BOOLIT}                        { if(verbose) printf("BOOLIT(%s)\n", yytext); }
+{BOOLLIT}                       { if(verbose) printf("BOOLLIT(%s)\n", yytext); }
 {AND}                           { if(verbose) printf("AND\n"); }
 {ASSIGN}                        { if(verbose) printf("ASSIGN\n"); }
 {STAR}                          { if(verbose) printf("STAR\n"); }
@@ -125,10 +121,6 @@ escape [fnrt\"\\]
 {STRING}                        { if(verbose) printf("STRING\n"); }
 {VOID}                          { if(verbose) printf("VOID\n"); }
 {WHILE}                         { if(verbose) printf("WHILE\n"); }
-{BLANKID}                       { if(verbose) printf("BLANKID\n"); }
-{PACKAGE}                       { if(verbose) printf("PACKAGE\n"); }
-{VAR}                           { if(verbose) printf("VAR\n"); }
-{FLOAT32}                       { if(verbose) printf("FLOAT32\n"); }
 {RESERVED}                      { if(verbose) printf("RESERVED(%s)\n", yytext); }
 
 {whitespace}                    { }
