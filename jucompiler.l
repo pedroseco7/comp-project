@@ -69,12 +69,15 @@ STATIC                          "static"
 STRING                          "String"
 VOID                            "void"
 WHILE                           "while"
-RESERVED                        "++"|"--"|"null"|"Integer"|"System"|"abstract"|"assert"|"break"|"byte"|"case"|"catch"|"char"|"const"|"continue"|"default"|"do"|"enum"|"extends"|"final"|"finally"|"float"|"for"|"goto"|"implements"|"import"|"instanceof"|"interface"|"long"|"native"|"new"|"private"|"protected"|"short"|"strictfp"|"super"|"switch"|"synchronized"|"this"|"throw"|"throws"|"transient"|"try"|"volatile"|"_"|"package"
+RESERVED                        "++"|"--"|"null"|"Integer"|"System"|"abstract"|"assert"|"break"|"byte"|"case"|"catch"|"char"|"const"|"continue"|"default"|"do"|"enum"|"extends"|"final"|"finally"|"float"|"for"|"goto"|"implements"|"import"|"instanceof"|"interface"|"long"|"native"|"new"|"private"|"protected"|"short"|"strictfp"|"super"|"switch"|"synchronized"|"this"|"throw"|"throws"|"transient"|"try"|"volatile"|"package"
 
 
 %x MULTI_COMMENT
+%x SINGLE_COMMENT
 %x STRING
 %%
+
+{IGNORE}                        { }
 
 {BOOLLIT}                       { if(verbose) printf("BOOLLIT(%s)\n", yytext); }
 {AND}                           { if(verbose) printf("AND\n"); }
@@ -122,16 +125,18 @@ RESERVED                        "++"|"--"|"null"|"Integer"|"System"|"abstract"|"
 {RESERVED}                      { if(verbose) printf("RESERVED(%s)\n", yytext); }
 
 0|[1-9]([0-9_]*[0-9])?                  { if(verbose) printf("NATURAL(%s)\n", yytext); }
+(0|[1-9]([0-9_]*[0-9])?)/".length"      { if(verbose) printf("NATURAL (%s)\n", yytext); }
 {DigitSeq}"."({DigitSeq})?({EXPONENT})? { if(verbose) printf("DECIMAL(%s)\n", yytext); }
 "."{DigitSeq}({EXPONENT})?              { if(verbose) printf("DECIMAL(%s)\n", yytext); }
 {DigitSeq}{EXPONENT}                    { if(verbose) printf("DECIMAL(%s)\n", yytext); }
 
 {letter}({digit}|{letter})*     { if(verbose) printf("IDENTIFIER(%s)\n", yytext); }
 
-{IGNORE}                        { }
 {NEWLINE}                       { cur_line++; cur_col = 1; }
 
-"//".*                          { }
+"//"                            { start_line = cur_line; start_col = cur_col - yyleng; BEGIN(SINGLE_COMMENT); }
+<SINGLE_COMMENT>{NEWLINE}       { cur_line++; cur_col = 1; BEGIN(INITIAL); }
+<SINGLE_COMMENT>.               { ; }
 
 "/*"                            { start_line = cur_line; start_col = cur_col - yyleng; BEGIN(MULTI_COMMENT); }
 <MULTI_COMMENT>"*/"             { BEGIN(INITIAL); }
