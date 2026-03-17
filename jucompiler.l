@@ -125,7 +125,6 @@ RESERVED                        "++"|"--"|"null"|"Integer"|"System"|"abstract"|"
 {RESERVED}                      { if(verbose) printf("RESERVED(%s)\n", yytext); }
 
 0|[1-9]([0-9_]*[0-9])?                  { if(verbose) printf("NATURAL(%s)\n", yytext); }
-(0|[1-9]([0-9_]*[0-9])?)/".length"      { if(verbose) printf("NATURAL (%s)\n", yytext); }
 {DigitSeq}"."({DigitSeq})?({EXPONENT})? { if(verbose) printf("DECIMAL(%s)\n", yytext); }
 "."{DigitSeq}({EXPONENT})?              { if(verbose) printf("DECIMAL(%s)\n", yytext); }
 {DigitSeq}{EXPONENT}                    { if(verbose) printf("DECIMAL(%s)\n", yytext); }
