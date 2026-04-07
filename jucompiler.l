@@ -1,6 +1,8 @@
 %{
     /* place here any C variables and definitions */
     #include <string.h>
+    #include "y.tab.h"
+    #include "ast.h"
     int cur_line = 1;
     int cur_col = 1;
     int start_line = 1;
@@ -12,6 +14,7 @@
     char string_buf[4096];
 
     #define YY_USER_ACTION cur_col += yyleng;
+    #define PASS_TOKEN() yylval.lexeme = strdup(yytext);
 %}
 
 %option noyywrap
@@ -79,57 +82,57 @@ RESERVED                        "++"|"--"|"null"|"Integer"|"System"|"abstract"|"
 
 {IGNORE}                        { }
 
-{BOOLLIT}                       { if(verbose) printf("BOOLLIT(%s)\n", yytext); }
-{AND}                           { if(verbose) printf("AND\n"); }
-{ASSIGN}                        { if(verbose) printf("ASSIGN\n"); }
-{STAR}                          { if(verbose) printf("STAR\n"); }
-{COMMA}                         { if(verbose) printf("COMMA\n"); }
-{DIV}                           { if(verbose) printf("DIV\n"); }
-{EQ}                            { if(verbose) printf("EQ\n"); }
-{GE}                            { if(verbose) printf("GE\n"); }
-{GT}                            { if(verbose) printf("GT\n"); }
-{LBRACE}                        { if(verbose) printf("LBRACE\n"); }
-{LE}                            { if(verbose) printf("LE\n"); }
-{LPAR}                          { if(verbose) printf("LPAR\n"); }
-{LSQ}                           { if(verbose) printf("LSQ\n"); }
-{LT}                            { if(verbose) printf("LT\n"); }
-{MINUS}                         { if(verbose) printf("MINUS\n"); }
-{MOD}                           { if(verbose) printf("MOD\n"); }
-{NE}                            { if(verbose) printf("NE\n"); }
-{NOT}                           { if(verbose) printf("NOT\n"); }
-{OR}                            { if(verbose) printf("OR\n"); }
-{PLUS}                          { if(verbose) printf("PLUS\n"); }
-{RBRACE}                        { if(verbose) printf("RBRACE\n"); }
-{RPAR}                          { if(verbose) printf("RPAR\n"); }
-{RSQ}                           { if(verbose) printf("RSQ\n"); }
-{SEMICOLON}                     { if(verbose) printf("SEMICOLON\n"); }
-{ARROW}                         { if(verbose) printf("ARROW\n"); }
-{LSHIFT}                        { if(verbose) printf("LSHIFT\n"); }
-{RSHIFT}                        { if(verbose) printf("RSHIFT\n"); }
-{XOR}                           { if(verbose) printf("XOR\n"); }
-{BOOL}                          { if(verbose) printf("BOOL\n"); }
-{CLASS}                         { if(verbose) printf("CLASS\n"); }
-{DOTLENGTH}                     { if(verbose) printf("DOTLENGTH\n"); }
-{DOUBLE}                        { if(verbose) printf("DOUBLE\n"); }
-{ELSE}                          { if(verbose) printf("ELSE\n"); }
-{IF}                            { if(verbose) printf("IF\n"); }
-{INT}                           { if(verbose) printf("INT\n"); }
-{PRINT}                         { if(verbose) printf("PRINT\n"); }
-{PARSEINT}                      { if(verbose) printf("PARSEINT\n"); }
-{PUBLIC}                        { if(verbose) printf("PUBLIC\n"); }
-{RETURN}                        { if(verbose) printf("RETURN\n"); }
-{STATIC}                        { if(verbose) printf("STATIC\n"); }
-{STRING}                        { if(verbose) printf("STRING\n"); }
-{VOID}                          { if(verbose) printf("VOID\n"); }
-{WHILE}                         { if(verbose) printf("WHILE\n"); }
-{RESERVED}                      { if(verbose) printf("RESERVED(%s)\n", yytext); }
+{BOOLLIT}                       { if(verbose) printf("BOOLLIT(%s)\n", yytext); PASS_TOKEN(); return BOOLLIT; }
+{AND}                           { if(verbose) printf("AND\n"); return AND; }
+{ASSIGN}                        { if(verbose) printf("ASSIGN\n"); return ASSIGN; }
+{STAR}                          { if(verbose) printf("STAR\n"); return STAR; }
+{COMMA}                         { if(verbose) printf("COMMA\n"); return COMMA; }
+{DIV}                           { if(verbose) printf("DIV\n"); return DIV; }
+{EQ}                            { if(verbose) printf("EQ\n"); return EQ; }
+{GE}                            { if(verbose) printf("GE\n"); return GE; }
+{GT}                            { if(verbose) printf("GT\n"); return GT; }
+{LBRACE}                        { if(verbose) printf("LBRACE\n"); return LBRACE; }
+{LE}                            { if(verbose) printf("LE\n"); return LE; }
+{LPAR}                          { if(verbose) printf("LPAR\n"); return LPAR; }
+{LSQ}                           { if(verbose) printf("LSQ\n"); return LSQ; }
+{LT}                            { if(verbose) printf("LT\n"); return LT; }
+{MINUS}                         { if(verbose) printf("MINUS\n"); return MINUS; }
+{MOD}                           { if(verbose) printf("MOD\n"); return MOD; }
+{NE}                            { if(verbose) printf("NE\n"); return NE; }
+{NOT}                           { if(verbose) printf("NOT\n"); return NOT;}
+{OR}                            { if(verbose) printf("OR\n"); return OR; }
+{PLUS}                          { if(verbose) printf("PLUS\n"); return PLUS; }
+{RBRACE}                        { if(verbose) printf("RBRACE\n"); return RBRACE; }
+{RPAR}                          { if(verbose) printf("RPAR\n"); return RPAR; }
+{RSQ}                           { if(verbose) printf("RSQ\n"); return RSQ; }
+{SEMICOLON}                     { if(verbose) printf("SEMICOLON\n"); return SEMICOLON; }
+{ARROW}                         { if(verbose) printf("ARROW\n"); return ARROW; }
+{LSHIFT}                        { if(verbose) printf("LSHIFT\n"); return LSHIFT; }
+{RSHIFT}                        { if(verbose) printf("RSHIFT\n"); return RSHIFT; }
+{XOR}                           { if(verbose) printf("XOR\n"); return XOR;}
+{BOOL}                          { if(verbose) printf("BOOL\n"); return BOOL; }
+{CLASS}                         { if(verbose) printf("CLASS\n"); return CLASS; }
+{DOTLENGTH}                     { if(verbose) printf("DOTLENGTH\n"); return DOTLENGTH; }
+{DOUBLE}                        { if(verbose) printf("DOUBLE\n"); return DOUBLE; }
+{ELSE}                          { if(verbose) printf("ELSE\n"); return ELSE; }
+{IF}                            { if(verbose) printf("IF\n"); return IF; }
+{INT}                           { if(verbose) printf("INT\n"); return INT; }
+{PRINT}                         { if(verbose) printf("PRINT\n"); return PRINT; }
+{PARSEINT}                      { if(verbose) printf("PARSEINT\n"); return PARSEINT; }
+{PUBLIC}                        { if(verbose) printf("PUBLIC\n"); return PUBLIC; }
+{RETURN}                        { if(verbose) printf("RETURN\n"); return RETURN; }
+{STATIC}                        { if(verbose) printf("STATIC\n"); return STATIC; }
+{STRING}                        { if(verbose) printf("STRING\n"); return STRING; }
+{VOID}                          { if(verbose) printf("VOID\n"); return VOID; }
+{WHILE}                         { if(verbose) printf("WHILE\n"); return WHILE;}
+{RESERVED}                      { if(verbose) printf("RESERVED(%s)\n", yytext); PASS_TOKEN(); return RESERVED;}
 
-0|[1-9]([0-9_]*[0-9])?                  { if(verbose) printf("NATURAL(%s)\n", yytext); }
-{DigitSeq}"."({DigitSeq})?({EXPONENT})? { if(verbose) printf("DECIMAL(%s)\n", yytext); }
-"."{DigitSeq}({EXPONENT})?              { if(verbose) printf("DECIMAL(%s)\n", yytext); }
-{DigitSeq}{EXPONENT}                    { if(verbose) printf("DECIMAL(%s)\n", yytext); }
+0|[1-9]([0-9_]*[0-9])?                  { if(verbose) printf("NATURAL(%s)\n", yytext); PASS_TOKEN(); return NATURAL; }
+{DigitSeq}"."({DigitSeq})?({EXPONENT})? { if(verbose) printf("DECIMAL(%s)\n", yytext); PASS_TOKEN(); return DECIMAL; }
+"."{DigitSeq}({EXPONENT})?              { if(verbose) printf("DECIMAL(%s)\n", yytext); PASS_TOKEN(); return DECIMAL; }
+{DigitSeq}{EXPONENT}                    { if(verbose) printf("DECIMAL(%s)\n", yytext); PASS_TOKEN(); return DECIMAL; }
 
-{letter}({digit}|{letter})*     { if(verbose) printf("IDENTIFIER(%s)\n", yytext); }
+{letter}({digit}|{letter})*     { if(verbose) printf("IDENTIFIER(%s)\n", yytext); PASS_TOKEN(); return IDENTIFIER; }
 
 {NEWLINE}                       { cur_line++; cur_col = 1; }
 
@@ -148,7 +151,7 @@ RESERVED                        "++"|"--"|"null"|"Integer"|"System"|"abstract"|"
 <STRING>"\\"[^\n\r]             { printf("Line %d, col %d: invalid escape sequence (%s)\n", cur_line, cur_col - (int)yyleng, yytext); string_with_error = 1; }
 <STRING>"\\"                    { printf("Line %d, col %d: invalid escape sequence (\\)\n", cur_line, cur_col - (int)yyleng); string_with_error = 1; }
 <STRING>{NEWLINE}               { printf("Line %d, col %d: unterminated string literal\n", start_line, start_col); cur_line++; cur_col = 1; BEGIN(INITIAL); }
-<STRING>\"                      { if(verbose && !string_with_error) printf("STRLIT(\"%s\")\n", string_buf); BEGIN(INITIAL); }
+<STRING>\"                      { if(verbose && !string_with_error) printf("STRLIT(\"%s\")\n", string_buf); BEGIN(INITIAL); if(!string_with_error) {yylval.lexeme = strdup(string_buf); return STRLIT;}}
 <STRING><<EOF>>                 { printf("Line %d, col %d: unterminated string literal\n", start_line, start_col); return 0; }
 <STRING>.                       { strcat(string_buf, yytext); }
 
@@ -157,14 +160,3 @@ RESERVED                        "++"|"--"|"null"|"Integer"|"System"|"abstract"|"
 %%
 
 extern int yylex();
-int main(int argc, char **argv) {
-    if (argc > 1) {
-        if (strcmp(argv[1], "-l") == 0) {
-            verbose = 1;
-        } else if (strcmp(argv[1], "-e1") == 0) {
-            verbose = 0;
-        }
-    }
-    yylex();    /* run the lexical analysis automaton */
-    return 0;
-}
