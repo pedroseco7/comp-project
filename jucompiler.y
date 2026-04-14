@@ -21,6 +21,7 @@ extern char *yytext;
     struct node *node;
 }
 
+%right ASSIGN
 %left OR
 %left AND
 %left XOR
@@ -29,7 +30,7 @@ extern char *yytext;
 %left LSHIFT RSHIFT
 %left PLUS MINUS
 %left STAR DIV MOD
-%right NOT PLUS PLUS MINUS MINUS
+%right NOT UMINUS UPLUS
 %left LPAR RPAR LSQ RSQ DOTLENGTH
 %nonassoc ELSE
 
@@ -37,15 +38,122 @@ extern char *yytext;
 
 %%
 
+Program: CLASS IDENTIFIER LBRACE ProgramDecls RBRACE 
+       ;
 
+ProgramDecls: ProgramDecls MethodDecl
+            | ProgramDecls FieldDecl
+            | ProgramDecls SEMICOLON
+            | 
+            ;
 
+MethodDecl: PUBLIC STATIC MethodHeader MethodBody 
+          ;
 
+FieldDecl: PUBLIC STATIC Type IDENTIFIER IdList SEMICOLON 
+         | error SEMICOLON 
+         ;
 
+Type: BOOL 
+    | INT 
+    | DOUBLE 
+    ;
 
+MethodHeader: Type IDENTIFIER LPAR MethodParams RPAR
+            | VOID IDENTIFIER LPAR MethodParams RPAR
+            ;
 
+MethodParams: FormalParams
+            |
+            ;
+
+FormalParams: Type IDENTIFIER FormalParamsList
+            | STRING LSQ RSQ IDENTIFIER
+            ;
+
+FormalParamsList: FormalParamsList COMMA Type IDENTIFIER
+                |
+                ;
+
+MethodBody: LBRACE MethodBodyDecls RBRACE 
+          ;
+
+MethodBodyDecls: MethodBodyDecls Statement
+               | MethodBodyDecls VarDecl
+               | 
+               ;
+
+VarDecl: Type IDENTIFIER IdList SEMICOLON 
+       ;
+
+IdList: IdList COMMA IDENTIFIER
+      | 
+      ;
+
+Statement: LBRACE StatementList RBRACE
+         | IF LPAR Expr RPAR Statement %prec ELSE
+         | IF LPAR Expr RPAR Statement ELSE Statement
+         | WHILE LPAR Expr RPAR Statement
+         | RETURN SEMICOLON
+         | RETURN Expr SEMICOLON
+         | MethodInvocation SEMICOLON
+         | Assignment SEMICOLON
+         | ParseArgs SEMICOLON
+         | SEMICOLON
+         | PRINT LPAR Expr RPAR SEMICOLON
+         | PRINT LPAR STRLIT RPAR SEMICOLON
+         | error SEMICOLON 
+         ;
+
+StatementList: StatementList Statement
+             | 
+             ;
+
+MethodInvocation: IDENTIFIER LPAR  RPAR
+                | IDENTIFIER LPAR ExprList RPAR
+                | IDENTIFIER LPAR error RPAR
+                ;
+
+ExprList: Expr
+        | ExprList COMMA Expr
+        ;
+
+Assignment: IDENTIFIER ASSIGN Expr ;
+
+ParseArgs: PARSEINT LPAR IDENTIFIER LSQ Expr RSQ RPAR ;
+
+Expr: Expr PLUS Expr
+    | Expr MINUS Expr
+    | Expr STAR Expr
+    | Expr DIV Expr
+    | Expr MOD Expr
+    | Expr LSHIFT Expr
+    | Expr RSHIFT Expr
+    | Expr XOR Expr
+    | Expr AND Expr
+    | Expr OR Expr
+    | Expr EQ Expr
+    | Expr NE Expr
+    | Expr LT Expr
+    | Expr GT Expr
+    | Expr LE Expr
+    | Expr GE Expr
+    | MINUS Expr %prec UMINUS
+    | PLUS Expr %prec UPLUS
+    | NOT Expr
+    | MethodInvocation
+    | Assignment
+    | ParseArgs
+    | IDENTIFIER DOTLENGTH
+    | IDENTIFIER
+    | NATURAL
+    | DECIMAL
+    | BOOLLIT
+    | LPAR Expr RPAR
+    | LPAR error RPAR
+    ;
 
 %%
-
 
 const char *category_names[] = {
     "Program", "FieldDecl", "VarDecl", "MethodDecl", "MethodHeader", 
