@@ -21,6 +21,18 @@ extern char *yytext;
     struct node *node;
 }
 
+%left OR
+%left AND
+%left XOR
+%left EQ NE
+%left LT GT LE GE
+%left LSHIFT RSHIFT
+%left PLUS MINUS
+%left STAR DIV MOD
+%right NOT PLUS PLUS MINUS MINUS
+%left LPAR RPAR LSQ RSQ DOTLENGTH
+%nonassoc ELSE
+
 /* START grammar rules section -- BNF grammar */
 
 %%
