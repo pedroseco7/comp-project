@@ -10,10 +10,19 @@
     
     int verbose = 0;
     int string_with_error = 0;
-
     char string_buf[4096];
 
-    #define YY_USER_ACTION cur_col += yyleng;
+    int error_line = 1;
+    int error_col = 1;
+    char error_yytext[8192] = "";
+
+    #define YY_USER_ACTION { \
+        error_line = cur_line; \
+        error_col = cur_col; \
+        cur_col += yyleng; \
+        strcpy(error_yytext, yytext); \
+    }
+
     #define PASS_TOKEN() yylval.lexeme = strdup(yytext);
 %}
 
@@ -142,7 +151,13 @@ RESERVED                        "++"|"--"|"null"|"Integer"|"System"|"abstract"|"
 "/*"                            { start_line = cur_line; start_col = cur_col - yyleng; BEGIN(MULTI_COMMENT); }
 <MULTI_COMMENT>"*/"             { BEGIN(INITIAL); }
 <MULTI_COMMENT>{NEWLINE}        { cur_line++; cur_col = 1; }
-<MULTI_COMMENT><<EOF>>          { printf("Line %d, col %d: unterminated comment\n", start_line, start_col); return 0; }
+<MULTI_COMMENT><<EOF>> { 
+    printf("Line %d, col %d: unterminated comment\n", start_line, start_col); 
+    error_line = cur_line;
+    error_col = cur_col;
+    strcpy(error_yytext, "");
+    return 0; 
+}
 <MULTI_COMMENT>.                { }
 
 "\""                            { start_line = cur_line; start_col = cur_col - yyleng; string_buf[0] = '\0'; string_with_error = 0; BEGIN(STR_STATE); }
@@ -150,7 +165,18 @@ RESERVED                        "++"|"--"|"null"|"Integer"|"System"|"abstract"|"
 <STR_STATE>"\\"[^\n\r]          { printf("Line %d, col %d: invalid escape sequence (%s)\n", cur_line, cur_col - (int)yyleng, yytext); string_with_error = 1; }
 <STR_STATE>"\\"                 { printf("Line %d, col %d: invalid escape sequence (\\)\n", cur_line, cur_col - (int)yyleng); string_with_error = 1; }
 <STR_STATE>{NEWLINE}            { printf("Line %d, col %d: unterminated string literal\n", start_line, start_col); cur_line++; cur_col = 1; BEGIN(INITIAL); }
-<STR_STATE>\"                   { if(verbose && !string_with_error) printf("STRLIT(\"%s\")\n", string_buf); BEGIN(INITIAL); if(!string_with_error) {yylval.lexeme = strdup(string_buf); return STRLIT;}}
+<STR_STATE>\" { 
+    if(verbose && !string_with_error) printf("STRLIT(\"%s\")\n", string_buf);
+    BEGIN(INITIAL); 
+    if(!string_with_error) {
+        yylval.lexeme = strdup(string_buf);
+        error_line = start_line;
+        error_col = start_col;
+        sprintf(error_yytext, "\"%s\"", string_buf);
+        
+        return STRLIT;
+    }
+}
 <STR_STATE><<EOF>>              { printf("Line %d, col %d: unterminated string literal\n", start_line, start_col); return 0; }
 <STR_STATE>.                    { strcat(string_buf, yytext); }
 

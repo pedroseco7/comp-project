@@ -35,6 +35,9 @@ struct node *ast;
 
 extern int cur_line, cur_col;
 extern char *yytext;
+
+extern int error_line, error_col;
+extern char error_yytext[];
 %}
 
 %token AND ASSIGN STAR COMMA DIV EQ GE GT LBRACE LE LPAR LSQ LT MINUS MOD NE NOT OR PLUS RBRACE RPAR RSQ SEMICOLON ARROW LSHIFT RSHIFT XOR BOOL CLASS DOTLENGTH DOUBLE ELSE IF INT PRINT PARSEINT PUBLIC RETURN STATIC STRING VOID WHILE RESERVED
@@ -256,39 +259,158 @@ IdList: IdList COMMA IDENTIFIER {
       | { $$ = NULL; }
       ;
 
-Statement: LBRACE StatementList RBRACE { $$ = NULL; }
-         | IF LPAR Expr RPAR Statement %prec IF_NO_ELSE { $$ = NULL; }
-         | IF LPAR Expr RPAR Statement ELSE Statement { $$ = NULL; }
-         | WHILE LPAR Expr RPAR Statement { $$ = NULL; }
-         | RETURN SEMICOLON { $$ = NULL; }
-         | RETURN Expr SEMICOLON { $$ = NULL; }
-         | MethodInvocation SEMICOLON { $$ = NULL; }
-         | Assignment SEMICOLON { $$ = NULL; }
-         | ParseArgs SEMICOLON { $$ = NULL; }
-         | SEMICOLON { $$ = NULL; }
-         | PRINT LPAR Expr RPAR SEMICOLON { $$ = NULL; }
-         | PRINT LPAR STRLIT RPAR SEMICOLON { $$ = NULL; }
-         | error SEMICOLON { $$ = NULL; }
+Statement: LBRACE StatementList RBRACE 
+         { 
+             int count = 0;
+             if ($2 != NULL) {
+                 struct node_list *child = $2->children;
+                 while (child != NULL) {
+                     count++;
+                     child = child->next;
+                 }
+             }
+
+             if (count == 0) {
+                 // Tem 0 statements: Elimina o Block completamente (retorna NULL)
+                 $$ = NULL;
+                 free($2);
+             } else if (count == 1) {
+                 // Tem apenas 1 statement: Omite o Block e passa o único filho para cima
+                 $$ = $2->children->node;
+                 free($2);
+             } else {
+                 // Tem >1 statements: Cria o Block e despeja o saco
+                 $$ = newnode(Block, NULL);
+                 if ($2 != NULL) {
+                     struct node_list *child = $2->children;
+                     while (child != NULL) {
+                         addchild($$, child->node);
+                         child = child->next;
+                     }
+                     free($2);
+                 }
+             }
+         }
+         | IF LPAR Expr RPAR Statement %prec IF_NO_ELSE 
+         { 
+             $$ = newnode(If, NULL);
+             addchild($$, $3);
+             addchild($$, $5 != NULL ? $5 : newnode(Block, NULL));
+             addchild($$, newnode(Block, NULL)); // Else vazio obrigatório
+         }
+         | IF LPAR Expr RPAR Statement ELSE Statement 
+         { 
+             $$ = newnode(If, NULL);
+             addchild($$, $3);
+             addchild($$, $5 != NULL ? $5 : newnode(Block, NULL));
+             addchild($$, $7 != NULL ? $7 : newnode(Block, NULL));
+         }
+         | WHILE LPAR Expr RPAR Statement 
+         { 
+             $$ = newnode(While, NULL);
+             addchild($$, $3);
+             addchild($$, $5 != NULL ? $5 : newnode(Block, NULL));
+         }
+         | RETURN SEMICOLON 
+         { 
+             $$ = newnode(Return, NULL);
+         }
+         | RETURN Expr SEMICOLON 
+         { 
+             $$ = newnode(Return, NULL);
+             addchild($$, $2);
+         }
+         | MethodInvocation SEMICOLON 
+         { 
+             $$ = $1;
+         }
+         | Assignment SEMICOLON 
+         { 
+             $$ = $1;
+         }
+         | ParseArgs SEMICOLON 
+         { 
+             $$ = $1;
+         }
+         | SEMICOLON 
+         { 
+             $$ = NULL; // Statement vazio
+         }
+         | PRINT LPAR Expr RPAR SEMICOLON 
+         { 
+             $$ = newnode(Print, NULL);
+             addchild($$, $3);
+         }
+         | PRINT LPAR STRLIT RPAR SEMICOLON 
+         { 
+             $$ = newnode(Print, NULL);
+             addchild($$, newnode(StrLit, $3));
+         }
+         | error SEMICOLON 
+         { 
+             $$ = NULL;
+         }
          ;
 
-StatementList: StatementList Statement { $$ = NULL; }
-             | { $$ = NULL; }
+StatementList: StatementList Statement 
+             { 
+                 $$ = $1;
+                 if ($$ == NULL) $$ = newnode(Program, NULL); // Nó saco
+                 if ($2 != NULL) addchild($$, $2);
+             }
+             | 
+             { 
+                 $$ = newnode(Program, NULL); // Nó saco
+             }
              ;
 
-MethodInvocation: IDENTIFIER LPAR RPAR { $$ = NULL; }
-                | IDENTIFIER LPAR ExprList RPAR { $$ = NULL; }
-                | IDENTIFIER LPAR error RPAR { $$ = NULL; }
+MethodInvocation: IDENTIFIER LPAR RPAR 
+                { 
+                    $$ = newnode(Call, NULL);
+                    addchild($$, newnode(Identifier, $1));
+                }
+                | IDENTIFIER LPAR ExprList RPAR 
+                { 
+                    $$ = newnode(Call, NULL);
+                    addchild($$, newnode(Identifier, $1));
+                    if ($3 != NULL) {
+                        struct node_list *child = $3->children;
+                        while (child != NULL) {
+                            addchild($$, child->node);
+                            child = child->next;
+                        }
+                        free($3);
+                    }
+                }
                 ;
 
-ExprList: Expr { $$ = NULL; }
-        | ExprList COMMA Expr { $$ = NULL; }
-        ;
+Assignment: IDENTIFIER ASSIGN Expr 
+          { 
+              $$ = newnode(Assign, NULL);
+              addchild($$, newnode(Identifier, $1));
+              addchild($$, $3);
+          }
+          ;
 
-Assignment: IDENTIFIER ASSIGN Expr { $$ = NULL; } ;
-
-ParseArgs: PARSEINT LPAR IDENTIFIER LSQ Expr RSQ RPAR { $$ = NULL; }
-         | PARSEINT LPAR error RPAR { $$ = NULL; }
+ParseArgs: PARSEINT LPAR IDENTIFIER LSQ Expr RSQ RPAR 
+         { 
+             $$ = newnode(ParseArgs, NULL);
+             addchild($$, newnode(Identifier, $3));
+             addchild($$, $5);
+         }
          ;
+
+ExprList: Expr 
+        { 
+            $$ = newnode(Program, NULL);
+            addchild($$, $1);
+        }
+        | ExprList COMMA Expr 
+        { 
+            $$ = $1;
+            addchild($$, $3);
+        }
+        ;
 
 Expr: Expr PLUS Expr  { $$ = newnode(Add, NULL); addchild($$, $1); addchild($$, $3); }
     | Expr MINUS Expr { $$ = newnode(Sub, NULL); addchild($$, $1); addchild($$, $3); }
@@ -365,7 +487,11 @@ void show(struct node *node, int depth){
         printf("..");
     }
     if (node->token != NULL) {
-        printf("%s(%s)\n", category_names[node->category], node->token);
+        if (node->category == StrLit) {
+            printf("%s(\"%s\")\n", category_names[node->category], node->token);
+        } else {
+            printf("%s(%s)\n", category_names[node->category], node->token);
+        }
     } else {
         printf("%s\n", category_names[node->category]);
     }
@@ -409,5 +535,5 @@ int main(int argc, char *argv[]) {
 
 void yyerror(char *error) {
     syntax_errors++;
-    printf("Line %d, col %d: %s: %s\n", cur_line, cur_col - (int)strlen(yytext), error, yytext);
+    printf("Line %d, col %d: %s: %s\n", error_line, error_col, error, error_yytext);
 }
