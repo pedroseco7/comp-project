@@ -181,5 +181,10 @@ RESERVED                        "++"|"--"|"null"|"Integer"|"System"|"abstract"|"
 <STR_STATE>.                    { strcat(string_buf, yytext); }
 
 .                               { printf("Line %d, col %d: illegal character (%s)\n", cur_line, cur_col - (int)yyleng, yytext); }
-<<EOF>>                         { return 0; }
+<<EOF>> { 
+    error_line = cur_line;
+    error_col = cur_col;
+    strcpy(error_yytext, "");
+    return 0; 
+}
 %%

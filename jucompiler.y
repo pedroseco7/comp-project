@@ -508,7 +508,7 @@ int syntax_errors = 0;
 int main(int argc, char *argv[]) {
     int print_ast = 0;
     if (argc > 1) {
-        if (strcmp(argv[1], "-1") == 0) {
+        if (strcmp(argv[1], "-l") == 0) {
             verbose = 1;
             while (yylex() != 0); 
             return 0;
