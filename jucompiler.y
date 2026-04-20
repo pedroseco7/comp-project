@@ -260,15 +260,12 @@ Statement: LBRACE StatementList RBRACE
              }
 
              if (count == 0) {
-                 // Tem 0 statements: Elimina o Block completamente (retorna NULL)
                  $$ = NULL;
                  free($2);
              } else if (count == 1) {
-                 // Tem apenas 1 statement: Omite o Block e passa o único filho para cima
                  $$ = $2->children->node;
                  free($2);
              } else {
-                 // Tem >1 statements: Cria o Block e despeja o saco
                  $$ = newnode(Block, NULL);
                  if ($2 != NULL) {
                      struct node_list *child = $2->children;
@@ -285,7 +282,7 @@ Statement: LBRACE StatementList RBRACE
              $$ = newnode(If, NULL);
              addchild($$, $3);
              addchild($$, $5 != NULL ? $5 : newnode(Block, NULL));
-             addchild($$, newnode(Block, NULL)); // Else vazio obrigatório
+             addchild($$, newnode(Block, NULL)); 
          }
          | IF LPAR Expr RPAR Statement ELSE Statement 
          { 
@@ -323,7 +320,7 @@ Statement: LBRACE StatementList RBRACE
          }
          | SEMICOLON 
          { 
-             $$ = NULL; // Statement vazio
+             $$ = NULL; 
          }
          | PRINT LPAR Expr RPAR SEMICOLON 
          { 
@@ -344,12 +341,12 @@ Statement: LBRACE StatementList RBRACE
 StatementList: StatementList Statement 
              { 
                  $$ = $1;
-                 if ($$ == NULL) $$ = newnode(Program, NULL); // Nó saco
+                 if ($$ == NULL) $$ = newnode(Program, NULL); 
                  if ($2 != NULL) addchild($$, $2);
              }
              | 
              { 
-                 $$ = newnode(Program, NULL); // Nó saco
+                 $$ = newnode(Program, NULL); 
              }
              ;
 
@@ -371,6 +368,10 @@ MethodInvocation: IDENTIFIER LPAR RPAR
                         free($3);
                     }
                 }
+                | IDENTIFIER LPAR error RPAR 
+                { 
+                    $$ = NULL;
+                }
                 ;
 
 Assignment: IDENTIFIER ASSIGN Expr 
@@ -387,6 +388,10 @@ ParseArgs: PARSEINT LPAR IDENTIFIER LSQ Expr RSQ RPAR
              addchild($$, newnode(Identifier, $3));
              addchild($$, $5);
          }
+         | PARSEINT LPAR error RPAR
+         { 
+             $$ = NULL;
+         }
          ;
 
 ExprList: Expr 
@@ -401,6 +406,7 @@ ExprList: Expr
         }
         ;
 
+/* THE FIX: Stratified Expression Grammar */
 Expr: Assignment { $$ = $1; }
     | ExprOr     { $$ = $1; }
     ;
@@ -527,7 +533,7 @@ int syntax_errors = 0;
 int main(int argc, char *argv[]) {
     int print_ast = 0;
     if (argc > 1) {
-        if (strcmp(argv[1], "-l") == 0) {
+        if (strcmp(argv[1], "-l") == 0 || strcmp(argv[1], "-1") == 0) {
             verbose = 1;
             while (yylex() != 0); 
             return 0;
