@@ -43,26 +43,15 @@ extern char error_yytext[];
 %token AND ASSIGN STAR COMMA DIV EQ GE GT LBRACE LE LPAR LSQ LT MINUS MOD NE NOT OR PLUS RBRACE RPAR RSQ SEMICOLON ARROW LSHIFT RSHIFT XOR BOOL CLASS DOTLENGTH DOUBLE ELSE IF INT PRINT PARSEINT PUBLIC RETURN STATIC STRING VOID WHILE RESERVED
 %token <lexeme> IDENTIFIER NATURAL DECIMAL STRLIT BOOLLIT
 
-%type <node> Program ProgramDecls MethodDecl FieldDecl Type MethodHeader MethodParams FormalParams FormalParamsList MethodBody MethodBodyDecls VarDecl IdList Statement StatementList MethodInvocation ExprList Assignment ParseArgs Expr
+%type <node> Program ProgramDecls MethodDecl FieldDecl Type MethodHeader MethodParams FormalParams FormalParamsList MethodBody MethodBodyDecls VarDecl IdList Statement StatementList MethodInvocation ExprList Assignment ParseArgs Expr ExprOr ExprAnd ExprXor ExprEq ExprRel ExprShift ExprAdd ExprMult ExprUnary ExprPostfix
 
 %union{
     char *lexeme;
     struct node *node;
 }
 
-%right ASSIGN
-%left OR
-%left AND
-%left XOR
-%left EQ NE
-%left LT GT LE GE
-%left LSHIFT RSHIFT
-%left PLUS MINUS
-%left STAR DIV MOD
-%right NOT UMINUS UPLUS
 %nonassoc IF_NO_ELSE
 %nonassoc ELSE
-%left LPAR RPAR LSQ RSQ DOTLENGTH
 
 %%
 
@@ -412,36 +401,66 @@ ExprList: Expr
         }
         ;
 
-Expr: Expr PLUS Expr  { $$ = newnode(Add, NULL); addchild($$, $1); addchild($$, $3); }
-    | Expr MINUS Expr { $$ = newnode(Sub, NULL); addchild($$, $1); addchild($$, $3); }
-    | Expr STAR Expr  { $$ = newnode(Mul, NULL); addchild($$, $1); addchild($$, $3); }
-    | Expr DIV Expr   { $$ = newnode(Div, NULL); addchild($$, $1); addchild($$, $3); }
-    | Expr MOD Expr   { $$ = newnode(Mod, NULL); addchild($$, $1); addchild($$, $3); }
-    | Expr LSHIFT Expr{ $$ = newnode(Lshift, NULL); addchild($$, $1); addchild($$, $3); }
-    | Expr RSHIFT Expr{ $$ = newnode(Rshift, NULL); addchild($$, $1); addchild($$, $3); }
-    | Expr XOR Expr   { $$ = newnode(Xor, NULL); addchild($$, $1); addchild($$, $3); }
-    | Expr AND Expr   { $$ = newnode(And, NULL); addchild($$, $1); addchild($$, $3); }
-    | Expr OR Expr    { $$ = newnode(Or, NULL); addchild($$, $1); addchild($$, $3); }
-    | Expr EQ Expr    { $$ = newnode(Eq, NULL); addchild($$, $1); addchild($$, $3); }
-    | Expr NE Expr    { $$ = newnode(Ne, NULL); addchild($$, $1); addchild($$, $3); }
-    | Expr LT Expr    { $$ = newnode(Lt, NULL); addchild($$, $1); addchild($$, $3); }
-    | Expr GT Expr    { $$ = newnode(Gt, NULL); addchild($$, $1); addchild($$, $3); }
-    | Expr LE Expr    { $$ = newnode(Le, NULL); addchild($$, $1); addchild($$, $3); }
-    | Expr GE Expr    { $$ = newnode(Ge, NULL); addchild($$, $1); addchild($$, $3); }
-    | MINUS Expr %prec UMINUS { $$ = newnode(Minus, NULL); addchild($$, $2); }
-    | PLUS Expr %prec UPLUS   { $$ = newnode(Plus, NULL); addchild($$, $2); }
-    | NOT Expr        { $$ = newnode(Not, NULL); addchild($$, $2); }
-    | MethodInvocation{ $$ = $1; }
-    | Assignment      { $$ = $1; }
-    | ParseArgs       { $$ = $1; }
-    | IDENTIFIER DOTLENGTH { $$ = newnode(Length, NULL); addchild($$, newnode(Identifier, $1)); }
-    | IDENTIFIER      { $$ = newnode(Identifier, $1); }
-    | NATURAL         { $$ = newnode(Natural, $1); }
-    | DECIMAL         { $$ = newnode(Decimal, $1); }
-    | BOOLLIT         { $$ = newnode(BoolLit, $1); }
-    | LPAR Expr RPAR  { $$ = $2; } 
-    | LPAR error RPAR { $$ = NULL; }
+Expr: Assignment { $$ = $1; }
+    | ExprOr     { $$ = $1; }
     ;
+
+ExprOr: ExprOr OR ExprAnd { $$ = newnode(Or, NULL); addchild($$, $1); addchild($$, $3); }
+      | ExprAnd           { $$ = $1; }
+      ;
+
+ExprAnd: ExprAnd AND ExprXor { $$ = newnode(And, NULL); addchild($$, $1); addchild($$, $3); }
+       | ExprXor             { $$ = $1; }
+       ;
+
+ExprXor: ExprXor XOR ExprEq { $$ = newnode(Xor, NULL); addchild($$, $1); addchild($$, $3); }
+       | ExprEq             { $$ = $1; }
+       ;
+
+ExprEq: ExprEq EQ ExprRel { $$ = newnode(Eq, NULL); addchild($$, $1); addchild($$, $3); }
+      | ExprEq NE ExprRel { $$ = newnode(Ne, NULL); addchild($$, $1); addchild($$, $3); }
+      | ExprRel           { $$ = $1; }
+      ;
+
+ExprRel: ExprRel LT ExprShift { $$ = newnode(Lt, NULL); addchild($$, $1); addchild($$, $3); }
+       | ExprRel GT ExprShift { $$ = newnode(Gt, NULL); addchild($$, $1); addchild($$, $3); }
+       | ExprRel LE ExprShift { $$ = newnode(Le, NULL); addchild($$, $1); addchild($$, $3); }
+       | ExprRel GE ExprShift { $$ = newnode(Ge, NULL); addchild($$, $1); addchild($$, $3); }
+       | ExprShift            { $$ = $1; }
+       ;
+
+ExprShift: ExprShift LSHIFT ExprAdd { $$ = newnode(Lshift, NULL); addchild($$, $1); addchild($$, $3); }
+         | ExprShift RSHIFT ExprAdd { $$ = newnode(Rshift, NULL); addchild($$, $1); addchild($$, $3); }
+         | ExprAdd                  { $$ = $1; }
+         ;
+
+ExprAdd: ExprAdd PLUS ExprMult  { $$ = newnode(Add, NULL); addchild($$, $1); addchild($$, $3); }
+       | ExprAdd MINUS ExprMult { $$ = newnode(Sub, NULL); addchild($$, $1); addchild($$, $3); }
+       | ExprMult               { $$ = $1; }
+       ;
+
+ExprMult: ExprMult STAR ExprUnary { $$ = newnode(Mul, NULL); addchild($$, $1); addchild($$, $3); }
+        | ExprMult DIV ExprUnary  { $$ = newnode(Div, NULL); addchild($$, $1); addchild($$, $3); }
+        | ExprMult MOD ExprUnary  { $$ = newnode(Mod, NULL); addchild($$, $1); addchild($$, $3); }
+        | ExprUnary               { $$ = $1; }
+        ;
+
+ExprUnary: PLUS ExprUnary  { $$ = newnode(Plus, NULL); addchild($$, $2); }
+         | MINUS ExprUnary { $$ = newnode(Minus, NULL); addchild($$, $2); }
+         | NOT ExprUnary   { $$ = newnode(Not, NULL); addchild($$, $2); }
+         | ExprPostfix     { $$ = $1; }
+         ;
+
+ExprPostfix: MethodInvocation      { $$ = $1; }
+           | ParseArgs             { $$ = $1; }
+           | IDENTIFIER DOTLENGTH  { $$ = newnode(Length, NULL); addchild($$, newnode(Identifier, $1)); }
+           | IDENTIFIER            { $$ = newnode(Identifier, $1); }
+           | NATURAL               { $$ = newnode(Natural, $1); }
+           | DECIMAL               { $$ = newnode(Decimal, $1); }
+           | BOOLLIT               { $$ = newnode(BoolLit, $1); }
+           | LPAR Expr RPAR        { $$ = $2; }
+           | LPAR error RPAR       { $$ = NULL; }
+           ;
 
 %%
 
