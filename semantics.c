@@ -154,6 +154,15 @@ void build_symbol_tables(struct node *ast_root) {
             }
 
             if (is_method_redefined(global_table, id_node->token, p_types, p_count)) {
+                /* 1. Verificar parametros repetidos PRIMEIRO */
+                struct symbol_table *dummy = create_table("dummy", "Method");
+                struct node_list *p2 = params_node->children;
+                while(p2) { 
+                    check_and_insert(dummy, p2->node->children->next->node, get_expr_type(p2->node->children->node->category), 1);
+                    p2 = p2->next; 
+                }
+
+                /* 2. Imprimir erro do metodo DEPOIS */
                 printf("Line %d, col %d: Symbol %s(", id_node->line, id_node->col, id_node->token);
                 for(int i = 0; i < p_count; i++) {
                     printf("%s%s", get_type_name(p_types[i]), (i == p_count - 1) ? "" : ",");
@@ -161,14 +170,6 @@ void build_symbol_tables(struct node *ast_root) {
                 printf(") already defined\n");
                 semantic_errors++;
                 decl->is_duplicate = 1; 
-
-                /* FIX: Mesmo num metodo ignorado, temos de verificar parametros repetidos! */
-                struct symbol_table *dummy = create_table("dummy", "Method");
-                p = params_node->children;
-                while(p) { 
-                    check_and_insert(dummy, p->node->children->next->node, get_expr_type(p->node->children->node->category), 1);
-                    p = p->next; 
-                }
             } else {
                 struct symbol *ms = insert_symbol(global_table, id_node->token, get_expr_type(header->children->node->category), 0, id_node->line, id_node->col);
                 ms->is_method = 1;
@@ -245,20 +246,6 @@ void annotate_ast(struct node *node, struct symbol_table *method_table) {
             } 
             curr = curr->next; 
         }
-
-        /* NOVA LÓGICA: Inserir as Variáveis Locais do método AGORA, antes de avaliar expressões */
-        if (method_table) {
-            struct node *body = node->children->next->node;
-            if (body) {
-                struct node_list *bc = body->children;
-                while(bc) {
-                    if (bc->node->category == VarDecl) {
-                        check_and_insert(method_table, bc->node->children->next->node, get_expr_type(bc->node->children->node->category), 0);
-                    }
-                    bc = bc->next;
-                }
-            }
-        }
     }
     
     struct node_list *child = node->children;
@@ -269,6 +256,11 @@ void annotate_ast(struct node *node, struct symbol_table *method_table) {
     }
     
     switch (node->category) {
+        case VarDecl:
+            if (method_table) {
+                check_and_insert(method_table, node->children->next->node, get_expr_type(node->children->node->category), 0);
+            }
+            break;
         case Identifier:
             if (method_table && node->is_expr) {
                 struct symbol *s = lookup_symbol(method_table, sym_tables, node->token, node->line, node->col);
