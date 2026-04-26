@@ -84,7 +84,7 @@ void check_and_insert(struct symbol_table *table, struct node *id_node, ExprType
     }
     struct symbol *curr = table->first_symbol;
     while (curr != NULL) {
-        /* Ignora os métodos na verificação de conflitos de nome! */
+        /* A magia está aqui: !curr->is_method */
         if (!curr->is_method && strcmp(curr->name, name) == 0) {
             printf("Line %d, col %d: Symbol %s already defined\n", id_node->line, id_node->col, name);
             semantic_errors++; return;
@@ -97,7 +97,7 @@ void check_and_insert(struct symbol_table *table, struct node *id_node, ExprType
 struct symbol *lookup_symbol(struct symbol_table *local_table, struct symbol_table *global_table, char *name, int use_line, int use_col) {
     struct symbol *sym = local_table ? local_table->first_symbol : NULL;
     while (sym != NULL) {
-        /* Só devolve o símbolo se for uma variável (não um método) */
+        /* A magia está aqui: !sym->is_method */
         if (!sym->is_method && strcmp(sym->name, name) == 0) {
             if (sym->is_param || sym->line < use_line || (sym->line == use_line && sym->col < use_col) || sym->line == 0) return sym;
         }
@@ -105,7 +105,7 @@ struct symbol *lookup_symbol(struct symbol_table *local_table, struct symbol_tab
     }
     sym = global_table ? global_table->first_symbol : NULL;
     while (sym != NULL) {
-        /* O mesmo para as variáveis globais (Fields) */
+        /* A magia está aqui: !sym->is_method */
         if (!sym->is_method && strcmp(sym->name, name) == 0) return sym;
         sym = sym->next;
     }
@@ -317,7 +317,7 @@ void annotate_ast(struct node *node, struct symbol_table *method_table) {
             {
                 ExprType t1 = node->children->node->type, t2 = node->children->next->node->type;
                 node->type = t1;
-                if (t1 != t2 && !(t1 == TypeDouble && t2 == TypeInt)) {
+                if (t1 == TypeStringArray || t2 == TypeStringArray || (t1 != t2 && !(t1 == TypeDouble && t2 == TypeInt))) {
                     printf("Line %d, col %d: Operator = cannot be applied to types %s, %s\n", node->line, node->col, get_type_name(t1), get_type_name(t2));
                     semantic_errors++;
                 }
@@ -364,7 +364,10 @@ void annotate_ast(struct node *node, struct symbol_table *method_table) {
                     curr = curr->next;
                 }
                 
-                /* PASSADA 2: Se nao encontrou exato, procura Widening (int -> double) */
+                /* PASSADA 2: Se não encontrou exato, procura Widening (int -> double) */
+                int match_count = 0;
+                struct symbol *ambiguous_best = NULL;
+
                 if (!best) {
                     curr = sym_tables->first_symbol;
                     while(curr) {
@@ -378,11 +381,14 @@ void annotate_ast(struct node *node, struct symbol_table *method_table) {
                                 }
                             }
                             if(match) { 
-                                best = curr; 
-                                break; 
+                                ambiguous_best = curr;
+                                match_count++; /* Conta em vez de dar break imediatamente */
                             }
                         }
                         curr = curr->next;
+                    }
+                    if (match_count == 1) {
+                        best = ambiguous_best;
                     }
                 }
                 
@@ -395,7 +401,14 @@ void annotate_ast(struct node *node, struct symbol_table *method_table) {
                     }
                     strcat(rs, ")"); 
                     id_node->func_sig = strdup(rs);
+                } else if (match_count > 1) {
+                    /* AMBIGUIDADE DETETADA */
+                    node->type = TypeUndef; 
+                    id_node->func_sig = strdup("undef");
+                    printf("Line %d, col %d: Reference to method %s is ambiguous\n", id_node->line, id_node->col, call_sig); 
+                    semantic_errors++;
                 } else {
+                    /* NAO ENCONTROU NADA */
                     node->type = TypeUndef; 
                     id_node->func_sig = strdup("undef");
                     printf("Line %d, col %d: Cannot find symbol %s\n", id_node->line, id_node->col, call_sig); 
