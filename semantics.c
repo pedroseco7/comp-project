@@ -272,26 +272,80 @@ void annotate_ast(struct node *node, struct symbol_table *method_table) {
         case Call:
             node->is_expr = 1;
             {
-                struct node *id_node = node->children->node; id_node->is_expr = 1;
-                struct node_list *arg = node->children->next; int count = 0; ExprType at[128];
-                char call_sig[512]; sprintf(call_sig, "%s(", id_node->token);
-                while(arg) { at[count] = arg->node->type; strcat(call_sig, get_type_name(at[count])); if(arg->next) strcat(call_sig, ","); arg = arg->next; count++; }
+                struct node *id_node = node->children->node; 
+                id_node->is_expr = 1;
+                struct node_list *arg = node->children->next; 
+                int count = 0; 
+                ExprType at[128];
+                char call_sig[512]; 
+                sprintf(call_sig, "%s(", id_node->token);
+                
+                while(arg) { 
+                    at[count] = arg->node->type; 
+                    strcat(call_sig, get_type_name(at[count])); 
+                    if(arg->next) strcat(call_sig, ","); 
+                    arg = arg->next; 
+                    count++; 
+                }
                 strcat(call_sig, ")");
-                struct symbol *best = NULL; struct symbol *curr = sym_tables->first_symbol;
+                
+                struct symbol *best = NULL; 
+                struct symbol *curr = sym_tables->first_symbol;
+                
+                /* PASSADA 1: Procura Match Exato (Prioridade Maxima) */
                 while(curr) {
                     if (curr->is_method && strcmp(curr->name, id_node->token) == 0 && curr->num_params == count) {
-                        int m = 1; for(int i=0; i<count; i++) if (!(curr->param_types[i] == at[i] || (curr->param_types[i] == TypeDouble && at[i] == TypeInt))) { m = 0; break; }
-                        if (m) { best = curr; break; }
+                        int match = 1; 
+                        for(int i = 0; i < count; i++) {
+                            if(curr->param_types[i] != at[i]) {
+                                match = 0; 
+                                break;
+                            }
+                        }
+                        if(match) { 
+                            best = curr; 
+                            break; 
+                        }
                     }
                     curr = curr->next;
                 }
+                
+                /* PASSADA 2: Se nao encontrou exato, procura Widening (int -> double) */
+                if (!best) {
+                    curr = sym_tables->first_symbol;
+                    while(curr) {
+                        if (curr->is_method && strcmp(curr->name, id_node->token) == 0 && curr->num_params == count) {
+                            int match = 1; 
+                            for(int i = 0; i < count; i++) {
+                                ExprType param = curr->param_types[i];
+                                if (!(param == at[i] || (param == TypeDouble && at[i] == TypeInt))) {
+                                    match = 0; 
+                                    break;
+                                }
+                            }
+                            if(match) { 
+                                best = curr; 
+                                break; 
+                            }
+                        }
+                        curr = curr->next;
+                    }
+                }
+                
                 if (best) {
-                    node->type = best->type; char rs[512] = "(";
-                    for(int i=0; i<best->num_params; i++) { strcat(rs, get_type_name(best->param_types[i])); if(i < best->num_params-1) strcat(rs, ","); }
-                    strcat(rs, ")"); id_node->func_sig = strdup(rs);
+                    node->type = best->type; 
+                    char rs[512] = "(";
+                    for(int i = 0; i < best->num_params; i++) { 
+                        strcat(rs, get_type_name(best->param_types[i])); 
+                        if(i < best->num_params - 1) strcat(rs, ","); 
+                    }
+                    strcat(rs, ")"); 
+                    id_node->func_sig = strdup(rs);
                 } else {
-                    node->type = TypeUndef; id_node->func_sig = strdup("undef");
-                    printf("Line %d, col %d: Cannot find symbol %s\n", id_node->line, id_node->col, call_sig); semantic_errors++;
+                    node->type = TypeUndef; 
+                    id_node->func_sig = strdup("undef");
+                    printf("Line %d, col %d: Cannot find symbol %s\n", id_node->line, id_node->col, call_sig); 
+                    semantic_errors++;
                 }
             }
             break;
