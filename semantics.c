@@ -23,6 +23,7 @@ const char* get_type_name(ExprType type) {
         case TypeStringArray: return "String[]";
         case TypeVoid: return "void";
         case TypeUndef: return "undef";
+        case TypeString: return "String";
         default: return "";
     }
 }
@@ -83,7 +84,8 @@ void check_and_insert(struct symbol_table *table, struct node *id_node, ExprType
     }
     struct symbol *curr = table->first_symbol;
     while (curr != NULL) {
-        if (strcmp(curr->name, name) == 0) {
+        /* Ignora os métodos na verificação de conflitos de nome! */
+        if (!curr->is_method && strcmp(curr->name, name) == 0) {
             printf("Line %d, col %d: Symbol %s already defined\n", id_node->line, id_node->col, name);
             semantic_errors++; return;
         }
@@ -95,17 +97,34 @@ void check_and_insert(struct symbol_table *table, struct node *id_node, ExprType
 struct symbol *lookup_symbol(struct symbol_table *local_table, struct symbol_table *global_table, char *name, int use_line, int use_col) {
     struct symbol *sym = local_table ? local_table->first_symbol : NULL;
     while (sym != NULL) {
-        if (strcmp(sym->name, name) == 0) {
+        /* Só devolve o símbolo se for uma variável (não um método) */
+        if (!sym->is_method && strcmp(sym->name, name) == 0) {
             if (sym->is_param || sym->line < use_line || (sym->line == use_line && sym->col < use_col) || sym->line == 0) return sym;
         }
         sym = sym->next;
     }
     sym = global_table ? global_table->first_symbol : NULL;
     while (sym != NULL) {
-        if (strcmp(sym->name, name) == 0) return sym;
+        /* O mesmo para as variáveis globais (Fields) */
+        if (!sym->is_method && strcmp(sym->name, name) == 0) return sym;
         sym = sym->next;
     }
     return NULL;
+}
+
+int is_method_redefined(struct symbol_table *global, char *name, ExprType *types, int num_params) {
+    struct symbol *s = global->first_symbol;
+    while(s) {
+        if (s->is_method && strcmp(s->name, name) == 0 && s->num_params == num_params) {
+            int match = 1;
+            for(int i = 0; i < num_params; i++) {
+                if(s->param_types[i] != types[i]) match = 0;
+            }
+            if(match) return 1;
+        }
+        s = s->next;
+    }
+    return 0;
 }
 
 void build_symbol_tables(struct node *ast_root) {
@@ -114,6 +133,7 @@ void build_symbol_tables(struct node *ast_root) {
     char *class_name = child->node->token;
     struct symbol_table *global_table = create_table(class_name, "Class");
     add_table(global_table);
+    
     child = child->next;
     while (child != NULL) {
         struct node *decl = child->node;
@@ -124,32 +144,55 @@ void build_symbol_tables(struct node *ast_root) {
             struct node *header = decl->children->node;
             struct node *id_node = header->children->next->node;
             struct node *params_node = header->children->next->next->node;
-            struct symbol *ms = insert_symbol(global_table, id_node->token, get_expr_type(header->children->node->category), 0, id_node->line, id_node->col);
-            ms->is_method = 1;
-            char sig[512]; sprintf(sig, "%s(", id_node->token);
+            
+            ExprType p_types[128];
+            int p_count = 0;
             struct node_list *p = params_node->children;
             while(p) {
-                ExprType pt = get_expr_type(p->node->children->node->category);
-                ms->param_types = realloc(ms->param_types, sizeof(ExprType)*(ms->num_params+1));
-                ms->param_types[ms->num_params++] = pt;
-                strcat(sig, get_type_name(pt)); if(p->next) strcat(sig, ",");
+                p_types[p_count++] = get_expr_type(p->node->children->node->category);
                 p = p->next;
             }
-            strcat(sig, ")");
-            struct symbol_table *mt = create_table(sig, "Method"); add_table(mt);
-            insert_symbol(mt, "return", get_expr_type(header->children->node->category), 0, 0, 0);
-            p = params_node->children;
-            while(p) { 
-                check_and_insert(mt, p->node->children->next->node, get_expr_type(p->node->children->node->category), 1);
-                p = p->next; 
-            }
-            struct node *body = decl->children->next->node;
-            if (body) {
-                struct node_list *bc = body->children;
-                while(bc) {
-                    if (bc->node->category == VarDecl)
-                        check_and_insert(mt, bc->node->children->next->node, get_expr_type(bc->node->children->node->category), 0);
-                    bc = bc->next;
+
+            if (is_method_redefined(global_table, id_node->token, p_types, p_count)) {
+                printf("Line %d, col %d: Symbol %s(", id_node->line, id_node->col, id_node->token);
+                for(int i = 0; i < p_count; i++) {
+                    printf("%s%s", get_type_name(p_types[i]), (i == p_count - 1) ? "" : ",");
+                }
+                printf(") already defined\n");
+                semantic_errors++;
+                decl->is_duplicate = 1; 
+            } else {
+                struct symbol *ms = insert_symbol(global_table, id_node->token, get_expr_type(header->children->node->category), 0, id_node->line, id_node->col);
+                ms->is_method = 1;
+                ms->num_params = p_count;
+                ms->param_types = malloc(sizeof(ExprType) * p_count);
+                for(int i = 0; i < p_count; i++) ms->param_types[i] = p_types[i];
+
+                char sig[512]; sprintf(sig, "%s(", id_node->token);
+                for(int i = 0; i < p_count; i++) {
+                    strcat(sig, get_type_name(p_types[i]));
+                    if(i < p_count - 1) strcat(sig, ",");
+                }
+                strcat(sig, ")");
+                
+                struct symbol_table *mt = create_table(sig, "Method"); 
+                add_table(mt);
+                insert_symbol(mt, "return", get_expr_type(header->children->node->category), 0, 0, 0);
+                
+                p = params_node->children;
+                while(p) { 
+                    check_and_insert(mt, p->node->children->next->node, get_expr_type(p->node->children->node->category), 1);
+                    p = p->next; 
+                }
+                
+                struct node *body = decl->children->next->node;
+                if (body) {
+                    struct node_list *bc = body->children;
+                    while(bc) {
+                        if (bc->node->category == VarDecl)
+                            check_and_insert(mt, bc->node->children->next->node, get_expr_type(bc->node->children->node->category), 0);
+                        bc = bc->next;
+                    }
                 }
             }
         }
@@ -183,7 +226,8 @@ void print_symbol_tables() {
 }
 
 void annotate_ast(struct node *node, struct symbol_table *method_table) {
-    if (node == NULL) return;
+    if (node == NULL || node->is_duplicate) return;
+    
     if (node->category == MethodDecl) {
         struct node *header = node->children->node;
         char sig[512]; sprintf(sig, "%s(", header->children->next->node->token);
@@ -194,14 +238,24 @@ void annotate_ast(struct node *node, struct symbol_table *method_table) {
             p = p->next;
         }
         strcat(sig, ")");
+        
         struct symbol_table *curr = sym_tables;
-        while (curr) { if (strcmp(curr->table_name, sig) == 0) { method_table = curr; break; } curr = curr->next; }
+        while (curr) { 
+            if (strcmp(curr->table_name, sig) == 0) { 
+                method_table = curr; 
+                break; 
+            } 
+            curr = curr->next; 
+        }
     }
+    
     struct node_list *child = node->children;
     while (child != NULL) {
-        if (!(node->category == Call && child == node->children)) annotate_ast(child->node, method_table);
+        if (!(node->category == Call && child == node->children)) 
+            annotate_ast(child->node, method_table);
         child = child->next;
     }
+    
     switch (node->category) {
         case Identifier:
             if (method_table && node->is_expr) {
@@ -433,6 +487,11 @@ void annotate_ast(struct node *node, struct symbol_table *method_table) {
             break;
         case If: case While:
             if (node->children->node->type != TypeBoolean) { printf("Line %d, col %d: Incompatible type %s in %s statement\n", node->children->node->line, node->children->node->col, get_type_name(node->children->node->type), (node->category == If ? "if" : "while")); semantic_errors++; }
+            break;
+
+        case StrLit:
+            node->type = TypeString;
+            node->is_expr = 1;
             break;
         default: break;
     }

@@ -9,7 +9,8 @@ typedef enum {
     TypeStringArray, 
     TypeVoid, 
     TypeUndef, 
-    TypeNone
+    TypeNone,
+    TypeString
 } ExprType;
 
 /* Categorias da AST (migradas do seu .y) */
@@ -29,6 +30,7 @@ struct node {
     char *token;
     ExprType type;  /* Tipo deduzido da expressão */
     int is_expr;    /* 1 se deve imprimir o tipo na flag -s */
+    int is_duplicate;
     char *func_sig; /* Para IDs de funções, guarda (int,double) */
     int line, col;  /* Coordenadas para mensagens de erro */
     struct node_list *children;

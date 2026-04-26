@@ -539,8 +539,13 @@ void show(struct node *node, int depth) {
     }
 
     if (print_sym && node->is_expr) {
-        if (node->func_sig) printf(" - %s\n", node->func_sig);
-        else printf(" - %s\n", get_type_name(node->type));
+        if (node->func_sig != NULL) {
+            printf(" - %s\n", node->func_sig);
+        } else if (node->type != TypeNone) {
+            printf(" - %s\n", get_type_name(node->type));
+        } else {
+            printf("\n");
+        }
     } else {
         printf("\n");
     }
