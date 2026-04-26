@@ -67,5 +67,6 @@ void print_symbol_tables();
 void annotate_ast(struct node *node, struct symbol_table *method_table);
 const char* get_type_name(ExprType type);
 struct symbol *lookup_symbol(struct symbol_table *local, struct symbol_table *global, char *name, int line, int col);
+void print_errors();
 
 #endif

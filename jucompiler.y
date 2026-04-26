@@ -587,8 +587,6 @@ int main(int argc, char *argv[]) {
         if (print_sym) {
             build_symbol_tables(ast);
             annotate_ast(ast, NULL);
-            /* REMOVIDO: if (semantic_errors == 0) */
-            /* Em Juc, imprimimos sempre as tabelas e a árvore na flag -s */
             print_symbol_tables();
             show(ast, 0);
         }
