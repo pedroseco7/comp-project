@@ -145,7 +145,7 @@ void build_symbol_tables(struct node *ast_root) {
             struct node *id_node = header->children->next->node;
             struct node *params_node = header->children->next->next->node;
             
-            ExprType p_types[128];
+            ExprType p_types[2048];
             int p_count = 0;
             struct node_list *p = params_node->children;
             while(p) {
@@ -177,7 +177,7 @@ void build_symbol_tables(struct node *ast_root) {
                 ms->param_types = malloc(sizeof(ExprType) * p_count);
                 for(int i = 0; i < p_count; i++) ms->param_types[i] = p_types[i];
 
-                char sig[512]; sprintf(sig, "%s(", id_node->token);
+                char sig[4096]; sprintf(sig, "%s(", id_node->token);
                 for(int i = 0; i < p_count; i++) {
                     strcat(sig, get_type_name(p_types[i]));
                     if(i < p_count - 1) strcat(sig, ",");
@@ -229,7 +229,7 @@ void annotate_ast(struct node *node, struct symbol_table *method_table) {
     
     if (node->category == MethodDecl) {
         struct node *header = node->children->node;
-        char sig[512]; sprintf(sig, "%s(", header->children->next->node->token);
+        char sig[4096]; sprintf(sig, "%s(", header->children->next->node->token);
         struct node_list *p = header->children->next->next->node->children;
         while(p) {
             strcat(sig, get_type_name(get_expr_type(p->node->children->node->category)));
@@ -271,14 +271,14 @@ void annotate_ast(struct node *node, struct symbol_table *method_table) {
         case Natural:
             node->type = TypeInt;
             {
-                char clean[256]; strip_underscores(node->token, clean);
+                char clean[2048]; strip_underscores(node->token, clean);
                 if (atof(clean) > 2147483647.0) { printf("Line %d, col %d: Number %s out of bounds\n", node->line, node->col, node->token); semantic_errors++; }
             }
             break;
         case Decimal:
             node->type = TypeDouble;
             {
-                char clean[256]; strip_underscores(node->token, clean);
+                char clean[2048]; strip_underscores(node->token, clean);
                 double val = atof(clean);
                 
                 /* Se atof der 0.0, mas o número no código fonte NÃO ERA zero */
@@ -334,8 +334,8 @@ void annotate_ast(struct node *node, struct symbol_table *method_table) {
                 id_node->is_expr = 1;
                 struct node_list *arg = node->children->next; 
                 int count = 0; 
-                ExprType at[128];
-                char call_sig[512]; 
+                ExprType at[2048];
+                char call_sig[4096]; 
                 sprintf(call_sig, "%s(", id_node->token);
                 
                 while(arg) { 
@@ -398,7 +398,7 @@ void annotate_ast(struct node *node, struct symbol_table *method_table) {
                 
                 if (best) {
                     node->type = best->type; 
-                    char rs[512] = "(";
+                    char rs[4096] = "(";
                     for(int i = 0; i < best->num_params; i++) { 
                         strcat(rs, get_type_name(best->param_types[i])); 
                         if(i < best->num_params - 1) strcat(rs, ","); 
