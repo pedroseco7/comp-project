@@ -217,7 +217,34 @@ void annotate_ast(struct node *node, struct symbol_table *method_table) {
                 if (atof(clean) > 2147483647.0) { printf("Line %d, col %d: Number %s out of bounds\n", node->line, node->col, node->token); semantic_errors++; }
             }
             break;
-        case Decimal: node->type = TypeDouble; break;
+        case Decimal:
+            node->type = TypeDouble;
+            {
+                char clean[256]; strip_underscores(node->token, clean);
+                double val = atof(clean);
+                
+                /* Se atof der 0.0, mas o número no código fonte NÃO ERA zero */
+                if (val == 0.0) {
+                    int is_real_zero = 1;
+                    for (int i = 0; clean[i]; i++) {
+                        /* Se encontrar um digito de 1 a 9 antes de qualquer 'e' ou 'E' */
+                        if (clean[i] >= '1' && clean[i] <= '9') {
+                            is_real_zero = 0;
+                            break;
+                        }
+                    }
+                    if (!is_real_zero) {
+                        printf("Line %d, col %d: Number %s out of bounds\n", node->line, node->col, node->token);
+                        semantic_errors++;
+                    }
+                }
+                /* Se for Infinito (overflow) */
+                // else if (val * 0.0 != 0.0) { 
+                //    printf("Line %d, col %d: Number %s out of bounds\n", node->line, node->col, node->token);
+                //    semantic_errors++;
+                // }
+            }
+            break;
         case BoolLit: node->type = TypeBoolean; break;
         case Add: case Sub: case Mul: case Div: case Mod:
             node->is_expr = 1;
@@ -304,10 +331,17 @@ void annotate_ast(struct node *node, struct symbol_table *method_table) {
             break;
         case Xor:
             node->is_expr = 1;
-            { ExprType t1 = node->children->node->type, t2 = node->children->next->node->type;
-              if (t1 == TypeBoolean && t2 == TypeBoolean) node->type = TypeBoolean;
-              else if (t1 == TypeInt && t2 == TypeInt) node->type = TypeInt;
-              else { node->type = TypeUndef; printf("Line %d, col %d: Operator ^ cannot be applied to types %s, %s\n", node->line, node->col, get_type_name(t1), get_type_name(t2)); semantic_errors++; }
+            {
+                ExprType t1 = node->children->node->type;
+                ExprType t2 = node->children->next->node->type;
+                if (t1 == TypeInt && t2 == TypeInt) {
+                    node->type = TypeInt;
+                } else {
+                    node->type = TypeInt; 
+                    printf("Line %d, col %d: Operator ^ cannot be applied to types %s, %s\n", 
+                           node->line, node->col, get_type_name(t1), get_type_name(t2));
+                    semantic_errors++;
+                }
             }
             break;
         case Lshift: case Rshift:
