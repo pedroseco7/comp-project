@@ -161,6 +161,14 @@ void build_symbol_tables(struct node *ast_root) {
                 printf(") already defined\n");
                 semantic_errors++;
                 decl->is_duplicate = 1; 
+
+                /* FIX: Mesmo num metodo ignorado, temos de verificar parametros repetidos! */
+                struct symbol_table *dummy = create_table("dummy", "Method");
+                p = params_node->children;
+                while(p) { 
+                    check_and_insert(dummy, p->node->children->next->node, get_expr_type(p->node->children->node->category), 1);
+                    p = p->next; 
+                }
             } else {
                 struct symbol *ms = insert_symbol(global_table, id_node->token, get_expr_type(header->children->node->category), 0, id_node->line, id_node->col);
                 ms->is_method = 1;
@@ -183,16 +191,6 @@ void build_symbol_tables(struct node *ast_root) {
                 while(p) { 
                     check_and_insert(mt, p->node->children->next->node, get_expr_type(p->node->children->node->category), 1);
                     p = p->next; 
-                }
-                
-                struct node *body = decl->children->next->node;
-                if (body) {
-                    struct node_list *bc = body->children;
-                    while(bc) {
-                        if (bc->node->category == VarDecl)
-                            check_and_insert(mt, bc->node->children->next->node, get_expr_type(bc->node->children->node->category), 0);
-                        bc = bc->next;
-                    }
                 }
             }
         }
@@ -246,6 +244,20 @@ void annotate_ast(struct node *node, struct symbol_table *method_table) {
                 break; 
             } 
             curr = curr->next; 
+        }
+
+        /* NOVA LÓGICA: Inserir as Variáveis Locais do método AGORA, antes de avaliar expressões */
+        if (method_table) {
+            struct node *body = node->children->next->node;
+            if (body) {
+                struct node_list *bc = body->children;
+                while(bc) {
+                    if (bc->node->category == VarDecl) {
+                        check_and_insert(method_table, bc->node->children->next->node, get_expr_type(bc->node->children->node->category), 0);
+                    }
+                    bc = bc->next;
+                }
+            }
         }
     }
     
