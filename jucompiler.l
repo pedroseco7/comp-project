@@ -21,9 +21,13 @@
         error_col = cur_col; \
         cur_col += yyleng; \
         strcpy(error_yytext, yytext); \
+        /* Preencher a nova estrutura da %union */ \
+        yylval.info.id = strdup(yytext); \
+        yylval.info.line = error_line; \
+        yylval.info.col = error_col; \
     }
 
-    #define PASS_TOKEN() yylval.lexeme = strdup(yytext);
+    #define PASS_TOKEN() ;
 %}
 
 %option noyywrap
@@ -166,13 +170,17 @@ RESERVED                        "++"|"--"|"null"|"Integer"|"System"|"abstract"|"
 <STR_STATE>"\\"                 { printf("Line %d, col %d: invalid escape sequence (\\)\n", cur_line, cur_col - (int)yyleng); string_with_error = 1; }
 <STR_STATE>{NEWLINE}            { printf("Line %d, col %d: unterminated string literal\n", start_line, start_col); cur_line++; cur_col = 1; BEGIN(INITIAL); }
 <STR_STATE>\" { 
-    if(verbose && !string_with_error) printf("STRLIT(\"%s\")\n", string_buf);
     BEGIN(INITIAL); 
     if(!string_with_error) {
-        yylval.lexeme = strdup(string_buf);
+        if(verbose) printf("STRLIT(\"%s\")\n", string_buf);
+        
+        yylval.info.id = strdup(string_buf);
+        yylval.info.line = start_line;
+        yylval.info.col = start_col;
+        
         error_line = start_line;
         error_col = start_col;
-        sprintf(error_yytext, "\"%s\"", string_buf);
+        sprintf(error_yytext, "\"%s\"", string_buf); 
         
         return STRLIT;
     }
