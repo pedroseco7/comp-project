@@ -28,12 +28,13 @@ enum category {
 struct node {
     enum category category;
     char *token;
-    ExprType type;  /* Tipo deduzido da expressão */
-    int is_expr;    /* 1 se deve imprimir o tipo na flag -s */
+    ExprType type;
+    int is_expr;
     int is_duplicate;
-    char *func_sig; /* Para IDs de funções, guarda (int,double) */
-    int line, col;  /* Coordenadas para mensagens de erro */
+    char *func_sig;
+    int line, col;
     struct node_list *children;
+    struct node_list *tail; /* NOVO: Ponteiro O(1) para a árvore */
 };
 
 struct node_list {
@@ -45,18 +46,19 @@ struct node_list {
 struct symbol {
     char *name;
     ExprType type;
-    ExprType *param_types; /* Array para tipos de parâmetros de métodos */
+    ExprType *param_types;
     int num_params;
-    int is_param;          /* Flag para marcar se é parâmetro formal */
+    int is_param;
     int is_method; 
-    int line, col;         /* Nascimento do símbolo para visibilidade linear */
+    int line, col;
     struct symbol *next;
 };
 
 struct symbol_table {
     char *table_name;
-    char *table_type;      /* "Class" ou "Method" */
+    char *table_type;
     struct symbol *first_symbol; 
+    struct symbol *last_symbol; /* NOVO: Ponteiro O(1) para os símbolos */
     struct symbol_table *next;
 };
 

@@ -491,10 +491,12 @@ struct node *newnode(enum category category, char *token) {
     new->token = token;
     new->type = TypeNone;
     new->is_expr = 0;
+    new->is_duplicate = 0;
     new->func_sig = NULL;
     new->line = 0;
     new->col = 0;
     new->children = NULL;
+    new->tail = NULL;
     return new;
 }
 
@@ -503,14 +505,20 @@ void addchild(struct node *parent, struct node *child) {
     struct node_list *new = malloc(sizeof(struct node_list));
     new->node = child;
     new->next = NULL;
-
+    
     if (parent->children == NULL) {
         parent->children = new;
+        parent->tail = new;
     } else {
-        struct node_list *children = parent->children;
-        while(children->next != NULL)
-            children = children->next;
-        children->next = new;
+        if (parent->tail != NULL) {
+            parent->tail->next = new;
+            parent->tail = new;
+        } else {
+            struct node_list *curr = parent->children;
+            while(curr->next != NULL) curr = curr->next;
+            curr->next = new;
+            parent->tail = new;
+        }
     }
 }
 
