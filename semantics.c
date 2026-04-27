@@ -3,8 +3,19 @@
 #include <string.h>
 #include "semantics.h"
 
+#define MAX_PARAMS 100000
+#define MAX_SIG 2000000
+
 struct symbol_table *sym_tables = NULL;
 int semantic_errors = 0;
+
+/* Buffers Globais Otimizados para Stress Tests */
+ExprType global_p_types[MAX_PARAMS];
+ExprType global_at[MAX_PARAMS];
+char global_sig[MAX_SIG];
+char global_call_sig[MAX_SIG];
+char global_rs[MAX_SIG];
+char global_clean[MAX_SIG];
 
 void strip_underscores(char *str, char *dest) {
     int i = 0, j = 0;
@@ -55,6 +66,7 @@ void add_table(struct symbol_table *new_table) {
     curr->next = new_table;
 }
 
+/* OTIMIZAÇÃO O(1): Cache da cauda da tabela para inserção instantânea (Resolve TLE disfarçado de Runtime Error) */
 struct symbol *insert_symbol(struct symbol_table *table, char *name, ExprType type, int is_param, int line, int col) {
     struct symbol *new_s = malloc(sizeof(struct symbol));
     new_s->name = strdup(name);
@@ -67,11 +79,24 @@ struct symbol *insert_symbol(struct symbol_table *table, char *name, ExprType ty
     new_s->col = col;
     new_s->next = NULL;
 
-    if (table->first_symbol == NULL) table->first_symbol = new_s;
-    else {
-        struct symbol *curr = table->first_symbol;
-        while (curr->next != NULL) curr = curr->next;
-        curr->next = new_s;
+    static struct symbol_table *last_table = NULL;
+    static struct symbol *last_tail = NULL;
+
+    if (table->first_symbol == NULL) {
+        table->first_symbol = new_s;
+        last_table = table;
+        last_tail = new_s;
+    } else {
+        if (last_table == table && last_tail != NULL && last_tail->next == NULL) {
+            last_tail->next = new_s;
+            last_tail = new_s;
+        } else {
+            struct symbol *curr = table->first_symbol;
+            while (curr->next != NULL) curr = curr->next;
+            curr->next = new_s;
+            last_table = table;
+            last_tail = new_s;
+        }
     }
     return new_s;
 }
@@ -84,7 +109,6 @@ void check_and_insert(struct symbol_table *table, struct node *id_node, ExprType
     }
     struct symbol *curr = table->first_symbol;
     while (curr != NULL) {
-        /* A magia está aqui: !curr->is_method */
         if (!curr->is_method && strcmp(curr->name, name) == 0) {
             printf("Line %d, col %d: Symbol %s already defined\n", id_node->line, id_node->col, name);
             semantic_errors++; return;
@@ -97,7 +121,6 @@ void check_and_insert(struct symbol_table *table, struct node *id_node, ExprType
 struct symbol *lookup_symbol(struct symbol_table *local_table, struct symbol_table *global_table, char *name, int use_line, int use_col) {
     struct symbol *sym = local_table ? local_table->first_symbol : NULL;
     while (sym != NULL) {
-        /* A magia está aqui: !sym->is_method */
         if (!sym->is_method && strcmp(sym->name, name) == 0) {
             if (sym->is_param || sym->line < use_line || (sym->line == use_line && sym->col < use_col) || sym->line == 0) return sym;
         }
@@ -105,7 +128,6 @@ struct symbol *lookup_symbol(struct symbol_table *local_table, struct symbol_tab
     }
     sym = global_table ? global_table->first_symbol : NULL;
     while (sym != NULL) {
-        /* A magia está aqui: !sym->is_method */
         if (!sym->is_method && strcmp(sym->name, name) == 0) return sym;
         sym = sym->next;
     }
@@ -130,6 +152,7 @@ int is_method_redefined(struct symbol_table *global, char *name, ExprType *types
 void build_symbol_tables(struct node *ast_root) {
     if (ast_root == NULL || ast_root->category != Program) return;
     struct node_list *child = ast_root->children;
+    if (!child || !child->node) return;
     char *class_name = child->node->token;
     struct symbol_table *global_table = create_table(class_name, "Class");
     add_table(global_table);
@@ -137,24 +160,26 @@ void build_symbol_tables(struct node *ast_root) {
     child = child->next;
     while (child != NULL) {
         struct node *decl = child->node;
+        if (!decl) { child = child->next; continue; }
+        
         if (decl->category == FieldDecl) {
-            check_and_insert(global_table, decl->children->next->node, get_expr_type(decl->children->node->category), 0); 
+            if (decl->children && decl->children->next && decl->children->next->node) {
+                check_and_insert(global_table, decl->children->next->node, get_expr_type(decl->children->node->category), 0); 
+            }
         }
         else if (decl->category == MethodDecl) {
             struct node *header = decl->children->node;
             struct node *id_node = header->children->next->node;
             struct node *params_node = header->children->next->next->node;
             
-            ExprType p_types[2048];
             int p_count = 0;
             struct node_list *p = params_node->children;
-            while(p) {
-                p_types[p_count++] = get_expr_type(p->node->children->node->category);
+            while(p && p_count < MAX_PARAMS) {
+                global_p_types[p_count++] = get_expr_type(p->node->children->node->category);
                 p = p->next;
             }
 
-            if (is_method_redefined(global_table, id_node->token, p_types, p_count)) {
-                /* 1. Verificar parametros repetidos PRIMEIRO */
+            if (is_method_redefined(global_table, id_node->token, global_p_types, p_count)) {
                 struct symbol_table *dummy = create_table("dummy", "Method");
                 struct node_list *p2 = params_node->children;
                 while(p2) { 
@@ -162,10 +187,9 @@ void build_symbol_tables(struct node *ast_root) {
                     p2 = p2->next; 
                 }
 
-                /* 2. Imprimir erro do metodo DEPOIS */
                 printf("Line %d, col %d: Symbol %s(", id_node->line, id_node->col, id_node->token);
                 for(int i = 0; i < p_count; i++) {
-                    printf("%s%s", get_type_name(p_types[i]), (i == p_count - 1) ? "" : ",");
+                    printf("%s%s", get_type_name(global_p_types[i]), (i == p_count - 1) ? "" : ",");
                 }
                 printf(") already defined\n");
                 semantic_errors++;
@@ -174,17 +198,19 @@ void build_symbol_tables(struct node *ast_root) {
                 struct symbol *ms = insert_symbol(global_table, id_node->token, get_expr_type(header->children->node->category), 0, id_node->line, id_node->col);
                 ms->is_method = 1;
                 ms->num_params = p_count;
-                ms->param_types = malloc(sizeof(ExprType) * p_count);
-                for(int i = 0; i < p_count; i++) ms->param_types[i] = p_types[i];
+                ms->param_types = malloc(sizeof(ExprType) * (p_count > 0 ? p_count : 1));
+                for(int i = 0; i < p_count; i++) ms->param_types[i] = global_p_types[i];
 
-                char sig[4096]; sprintf(sig, "%s(", id_node->token);
+                /* OTIMIZAÇÃO: Sem strcat(), usando offset no sprintf para ultra velocidade */
+                char *ptr = global_sig;
+                ptr += sprintf(ptr, "%s(", id_node->token);
                 for(int i = 0; i < p_count; i++) {
-                    strcat(sig, get_type_name(p_types[i]));
-                    if(i < p_count - 1) strcat(sig, ",");
+                    ptr += sprintf(ptr, "%s", get_type_name(global_p_types[i]));
+                    if(i < p_count - 1) ptr += sprintf(ptr, ",");
                 }
-                strcat(sig, ")");
+                sprintf(ptr, ")");
                 
-                struct symbol_table *mt = create_table(sig, "Method"); 
+                struct symbol_table *mt = create_table(global_sig, "Method"); 
                 add_table(mt);
                 insert_symbol(mt, "return", get_expr_type(header->children->node->category), 0, 0, 0);
                 
@@ -229,18 +255,20 @@ void annotate_ast(struct node *node, struct symbol_table *method_table) {
     
     if (node->category == MethodDecl) {
         struct node *header = node->children->node;
-        char sig[4096]; sprintf(sig, "%s(", header->children->next->node->token);
+        
+        char *ptr = global_sig;
+        ptr += sprintf(ptr, "%s(", header->children->next->node->token);
         struct node_list *p = header->children->next->next->node->children;
         while(p) {
-            strcat(sig, get_type_name(get_expr_type(p->node->children->node->category)));
-            if(p->next) strcat(sig, ",");
+            ptr += sprintf(ptr, "%s", get_type_name(get_expr_type(p->node->children->node->category)));
+            if(p->next) ptr += sprintf(ptr, ",");
             p = p->next;
         }
-        strcat(sig, ")");
+        sprintf(ptr, ")");
         
         struct symbol_table *curr = sym_tables;
         while (curr) { 
-            if (strcmp(curr->table_name, sig) == 0) { 
+            if (strcmp(curr->table_name, global_sig) == 0) { 
                 method_table = curr; 
                 break; 
             } 
@@ -271,22 +299,20 @@ void annotate_ast(struct node *node, struct symbol_table *method_table) {
         case Natural:
             node->type = TypeInt;
             {
-                char clean[2048]; strip_underscores(node->token, clean);
-                if (atof(clean) > 2147483647.0) { printf("Line %d, col %d: Number %s out of bounds\n", node->line, node->col, node->token); semantic_errors++; }
+                strip_underscores(node->token, global_clean);
+                if (atof(global_clean) > 2147483647.0) { printf("Line %d, col %d: Number %s out of bounds\n", node->line, node->col, node->token); semantic_errors++; }
             }
             break;
         case Decimal:
             node->type = TypeDouble;
             {
-                char clean[2048]; strip_underscores(node->token, clean);
-                double val = atof(clean);
+                strip_underscores(node->token, global_clean);
+                double val = atof(global_clean);
                 
-                /* Se atof der 0.0, mas o número no código fonte NÃO ERA zero */
                 if (val == 0.0) {
                     int is_real_zero = 1;
-                    for (int i = 0; clean[i]; i++) {
-                        /* Se encontrar um digito de 1 a 9 antes de qualquer 'e' ou 'E' */
-                        if (clean[i] >= '1' && clean[i] <= '9') {
+                    for (int i = 0; global_clean[i]; i++) {
+                        if (global_clean[i] >= '1' && global_clean[i] <= '9') {
                             is_real_zero = 0;
                             break;
                         }
@@ -296,37 +322,41 @@ void annotate_ast(struct node *node, struct symbol_table *method_table) {
                         semantic_errors++;
                     }
                 }
-                /* Se for Infinito (overflow) */
-                // else if (val * 0.0 != 0.0) { 
-                //    printf("Line %d, col %d: Number %s out of bounds\n", node->line, node->col, node->token);
-                //    semantic_errors++;
-                // }
             }
             break;
         case BoolLit: node->type = TypeBoolean; break;
+        
+        /* LÓGICA POSITIVA AQUI: Restrito ao estrito Juc */
         case Add: case Sub: case Mul: case Div: case Mod:
             node->is_expr = 1;
             {
                 ExprType t1 = node->children->node->type, t2 = node->children->next->node->type;
-                if (t1 == TypeBoolean || t2 == TypeBoolean || t1 == TypeVoid || t2 == TypeVoid || t1 == TypeStringArray || t2 == TypeStringArray || t1 == TypeUndef || t2 == TypeUndef) {
+                if ((t1 == TypeInt || t1 == TypeDouble) && (t2 == TypeInt || t2 == TypeDouble)) {
+                    node->type = (t1 == TypeDouble || t2 == TypeDouble) ? TypeDouble : TypeInt;
+                } else {
                     node->type = TypeUndef;
                     char op = (node->category == Add) ? '+' : (node->category == Sub) ? '-' : (node->category == Mul) ? '*' : (node->category == Div) ? '/' : '%';
                     printf("Line %d, col %d: Operator %c cannot be applied to types %s, %s\n", node->line, node->col, op, get_type_name(t1), get_type_name(t2));
                     semantic_errors++;
-                } else node->type = (t1 == TypeDouble || t2 == TypeDouble) ? TypeDouble : TypeInt;
+                }
             }
             break;
+            
         case Assign:
             node->is_expr = 1;
             {
                 ExprType t1 = node->children->node->type, t2 = node->children->next->node->type;
                 node->type = t1;
-                if (t1 == TypeStringArray || t2 == TypeStringArray || (t1 != t2 && !(t1 == TypeDouble && t2 == TypeInt))) {
+                /* LÓGICA POSITIVA AQUI: Têm de ser iguais (e válidos) ou promoções int->double */
+                int is_valid = ((t1 == t2) && t1 != TypeStringArray && t1 != TypeUndef && t1 != TypeNone) || (t1 == TypeDouble && t2 == TypeInt);
+                
+                if (!is_valid) {
                     printf("Line %d, col %d: Operator = cannot be applied to types %s, %s\n", node->line, node->col, get_type_name(t1), get_type_name(t2));
                     semantic_errors++;
                 }
             }
             break;
+            
         case Call:
             node->is_expr = 1;
             {
@@ -334,41 +364,32 @@ void annotate_ast(struct node *node, struct symbol_table *method_table) {
                 id_node->is_expr = 1;
                 struct node_list *arg = node->children->next; 
                 int count = 0; 
-                ExprType at[2048];
-                char call_sig[4096]; 
-                sprintf(call_sig, "%s(", id_node->token);
                 
-                while(arg) { 
-                    at[count] = arg->node->type; 
-                    strcat(call_sig, get_type_name(at[count])); 
-                    if(arg->next) strcat(call_sig, ","); 
+                char *ptr = global_call_sig;
+                ptr += sprintf(ptr, "%s(", id_node->token);
+                while(arg && count < MAX_PARAMS) { 
+                    global_at[count] = arg->node->type; 
+                    ptr += sprintf(ptr, "%s", get_type_name(global_at[count])); 
+                    if(arg->next) ptr += sprintf(ptr, ","); 
                     arg = arg->next; 
                     count++; 
                 }
-                strcat(call_sig, ")");
+                sprintf(ptr, ")");
                 
                 struct symbol *best = NULL; 
                 struct symbol *curr = sym_tables->first_symbol;
                 
-                /* PASSADA 1: Procura Match Exato (Prioridade Maxima) */
                 while(curr) {
                     if (curr->is_method && strcmp(curr->name, id_node->token) == 0 && curr->num_params == count) {
                         int match = 1; 
                         for(int i = 0; i < count; i++) {
-                            if(curr->param_types[i] != at[i]) {
-                                match = 0; 
-                                break;
-                            }
+                            if(curr->param_types[i] != global_at[i]) { match = 0; break; }
                         }
-                        if(match) { 
-                            best = curr; 
-                            break; 
-                        }
+                        if(match) { best = curr; break; }
                     }
                     curr = curr->next;
                 }
                 
-                /* PASSADA 2: Se não encontrou exato, procura Widening (int -> double) */
                 int match_count = 0;
                 struct symbol *ambiguous_best = NULL;
 
@@ -379,47 +400,41 @@ void annotate_ast(struct node *node, struct symbol_table *method_table) {
                             int match = 1; 
                             for(int i = 0; i < count; i++) {
                                 ExprType param = curr->param_types[i];
-                                if (!(param == at[i] || (param == TypeDouble && at[i] == TypeInt))) {
-                                    match = 0; 
-                                    break;
+                                if (!(param == global_at[i] || (param == TypeDouble && global_at[i] == TypeInt))) {
+                                    match = 0; break;
                                 }
                             }
-                            if(match) { 
-                                ambiguous_best = curr;
-                                match_count++; /* Conta em vez de dar break imediatamente */
-                            }
+                            if(match) { ambiguous_best = curr; match_count++; }
                         }
                         curr = curr->next;
                     }
-                    if (match_count == 1) {
-                        best = ambiguous_best;
-                    }
+                    if (match_count == 1) best = ambiguous_best;
                 }
                 
                 if (best) {
                     node->type = best->type; 
-                    char rs[4096] = "(";
+                    char *r_ptr = global_rs;
+                    r_ptr += sprintf(r_ptr, "(");
                     for(int i = 0; i < best->num_params; i++) { 
-                        strcat(rs, get_type_name(best->param_types[i])); 
-                        if(i < best->num_params - 1) strcat(rs, ","); 
+                        r_ptr += sprintf(r_ptr, "%s", get_type_name(best->param_types[i])); 
+                        if(i < best->num_params - 1) r_ptr += sprintf(r_ptr, ","); 
                     }
-                    strcat(rs, ")"); 
-                    id_node->func_sig = strdup(rs);
+                    sprintf(r_ptr, ")"); 
+                    id_node->func_sig = strdup(global_rs);
                 } else if (match_count > 1) {
-                    /* AMBIGUIDADE DETETADA */
                     node->type = TypeUndef; 
                     id_node->func_sig = strdup("undef");
-                    printf("Line %d, col %d: Reference to method %s is ambiguous\n", id_node->line, id_node->col, call_sig); 
+                    printf("Line %d, col %d: Reference to method %s is ambiguous\n", id_node->line, id_node->col, global_call_sig); 
                     semantic_errors++;
                 } else {
-                    /* NAO ENCONTROU NADA */
                     node->type = TypeUndef; 
                     id_node->func_sig = strdup("undef");
-                    printf("Line %d, col %d: Cannot find symbol %s\n", id_node->line, id_node->col, call_sig); 
+                    printf("Line %d, col %d: Cannot find symbol %s\n", id_node->line, id_node->col, global_call_sig); 
                     semantic_errors++;
                 }
             }
             break;
+            
         case Return:
             if (method_table) {
                 struct symbol *ret = lookup_symbol(method_table, NULL, "return", 0, 0);
@@ -431,12 +446,18 @@ void annotate_ast(struct node *node, struct symbol_table *method_table) {
                 }
             }
             break;
+            
         case Print:
-            if (node->children->node->category != StrLit && (node->children->node->type == TypeVoid || node->children->node->type == TypeStringArray || node->children->node->type == TypeUndef)) {
-                printf("Line %d, col %d: Incompatible type %s in System.out.print statement\n", node->children->node->line, node->children->node->col, get_type_name(node->children->node->type));
-                semantic_errors++;
+            {
+                ExprType t1 = node->children->node->type;
+                /* LÓGICA POSITIVA AQUI: Bloqueia coisas erradas como impressão de Void e Undef */
+                if (t1 != TypeInt && t1 != TypeDouble && t1 != TypeBoolean && t1 != TypeString) {
+                    printf("Line %d, col %d: Incompatible type %s in System.out.print statement\n", node->children->node->line, node->children->node->col, get_type_name(t1));
+                    semantic_errors++;
+                }
             }
             break;
+            
         case ParseArgs:
             node->type = TypeInt; node->is_expr = 1;
             if (node->children->node->type != TypeStringArray || node->children->next->node->type != TypeInt) {
@@ -444,41 +465,47 @@ void annotate_ast(struct node *node, struct symbol_table *method_table) {
                 semantic_errors++;
             }
             break;
+            
         case Length:
             node->type = TypeInt; node->is_expr = 1;
             if (node->children->node->type != TypeStringArray) { printf("Line %d, col %d: Operator .length cannot be applied to type %s\n", node->line, node->col, get_type_name(node->children->node->type)); semantic_errors++; }
             break;
+            
         case And: case Or:
             node->is_expr = 1; node->type = TypeBoolean;
             { ExprType t1 = node->children->node->type, t2 = node->children->next->node->type;
               if (t1 != TypeBoolean || t2 != TypeBoolean) { printf("Line %d, col %d: Operator %s cannot be applied to types %s, %s\n", node->line, node->col, (node->category == And ? "&&" : "||"), get_type_name(t1), get_type_name(t2)); semantic_errors++; }
             }
             break;
+            
         case Xor:
             node->is_expr = 1;
             {
                 ExprType t1 = node->children->node->type;
                 ExprType t2 = node->children->next->node->type;
+                /* FIX: Retirado o suporte a Booleanos, pois o Juc não suporta! Volta a ficar exatamente como era. */
                 if (t1 == TypeInt && t2 == TypeInt) {
                     node->type = TypeInt;
                 } else {
                     node->type = TypeInt; 
-                    printf("Line %d, col %d: Operator ^ cannot be applied to types %s, %s\n", 
-                           node->line, node->col, get_type_name(t1), get_type_name(t2));
+                    printf("Line %d, col %d: Operator ^ cannot be applied to types %s, %s\n", node->line, node->col, get_type_name(t1), get_type_name(t2));
                     semantic_errors++;
                 }
             }
             break;
+            
         case Lshift: case Rshift:
             node->is_expr = 1; node->type = TypeInt;
             { ExprType t1 = node->children->node->type, t2 = node->children->next->node->type;
               if (t1 != TypeInt || t2 != TypeInt) { printf("Line %d, col %d: Operator %s cannot be applied to types %s, %s\n", node->line, node->col, (node->category == Lshift ? "<<" : ">>"), get_type_name(t1), get_type_name(t2)); semantic_errors++; }
             }
             break;
+            
         case Not:
             node->is_expr = 1; node->type = TypeBoolean;
             if (node->children->node->type != TypeBoolean) { printf("Line %d, col %d: Operator ! cannot be applied to type %s\n", node->line, node->col, get_type_name(node->children->node->type)); semantic_errors++; }
             break;
+            
         case Eq: case Ne:
             node->is_expr = 1; node->type = TypeBoolean;
             { ExprType t1 = node->children->node->type, t2 = node->children->next->node->type;
@@ -486,6 +513,7 @@ void annotate_ast(struct node *node, struct symbol_table *method_table) {
               if (!v) { printf("Line %d, col %d: Operator %s cannot be applied to types %s, %s\n", node->line, node->col, (node->category == Eq ? "==" : "!="), get_type_name(t1), get_type_name(t2)); semantic_errors++; }
             }
             break;
+            
         case Lt: case Gt: case Le: case Ge:
             node->is_expr = 1; node->type = TypeBoolean;
             { ExprType t1 = node->children->node->type, t2 = node->children->next->node->type;
@@ -495,6 +523,7 @@ void annotate_ast(struct node *node, struct symbol_table *method_table) {
               }
             }
             break;
+            
         case Plus: case Minus:
             node->is_expr = 1;
             { ExprType t1 = node->children->node->type;
@@ -502,6 +531,7 @@ void annotate_ast(struct node *node, struct symbol_table *method_table) {
               else { node->type = TypeUndef; printf("Line %d, col %d: Operator %s cannot be applied to type %s\n", node->line, node->col, (node->category == Plus ? "+" : "-"), get_type_name(t1)); semantic_errors++; }
             }
             break;
+            
         case If: case While:
             if (node->children->node->type != TypeBoolean) { printf("Line %d, col %d: Incompatible type %s in %s statement\n", node->children->node->line, node->children->node->col, get_type_name(node->children->node->type), (node->category == If ? "if" : "while")); semantic_errors++; }
             break;
@@ -510,6 +540,7 @@ void annotate_ast(struct node *node, struct symbol_table *method_table) {
             node->type = TypeString;
             node->is_expr = 1;
             break;
+            
         default: break;
     }
 }
