@@ -7,6 +7,8 @@
     int cur_col = 1;
     int start_line = 1;
     int start_col = 1;
+
+    int lexical_errors = 0;
     
     int verbose = 0;
     int string_with_error = 0;

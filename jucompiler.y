@@ -14,6 +14,7 @@ struct node *newnode(enum category category, char *token);
 void addchild(struct node *parent, struct node *child);
 void show(struct node *node, int depth);
 void free_list_and_node(struct node *n);
+void codegen_program(struct node *program);
 
 extern int cur_line, cur_col;
 extern char *yytext;
@@ -579,11 +580,18 @@ void show(struct node *node, int depth) {
 extern int verbose;
 int syntax_errors = 0; 
 
+// Adiciona este cabeçalho no topo do jucompiler.y se ainda não o tiveres feito
+// void codegen_program(struct node *program);
+
+extern int lexical_errors; 
+
 int main(int argc, char *argv[]) {
-    /* FIX DE PERFORMANCE: Buffer de output instantâneo para não dar Time Limit Exceeded (TLE) */
     setvbuf(stdout, NULL, _IOFBF, 65536);
     
     int print_ast = 0;
+    int run_semantics = 1; // Por defeito, corre semântica (Meta 4)
+    int generate_code = (argc == 1); 
+
     if (argc > 1) {
         if (strcmp(argv[1], "-l") == 0 || strcmp(argv[1], "-1") == 0) {
             verbose = 1;
@@ -601,9 +609,14 @@ int main(int argc, char *argv[]) {
         } 
         else if (strcmp(argv[1], "-t") == 0) {
             print_ast = 1;
+            run_semantics = 0; // FIX: Não correr semântica na Meta 2!
         }
         else if (strcmp(argv[1], "-s") == 0) {
             print_sym = 1;
+            run_semantics = 1;
+        }
+        else if (strcmp(argv[1], "-e3") == 0) {
+            run_semantics = 1;
         }
     }
 
@@ -613,11 +626,21 @@ int main(int argc, char *argv[]) {
         if (print_ast) {
             show(ast, 0);
         }
-        if (print_sym) {
+        
+        // Só avança para a semântica se a flag permitir
+        if (run_semantics) {
             build_symbol_tables(ast);
             annotate_ast(ast, NULL);
-            print_symbol_tables();
-            show(ast, 0);
+            
+            if (print_sym) {
+                print_symbol_tables();
+                show(ast, 0);
+            }
+            
+            // Geração de Código: Só avança se não houver NENHUM erro
+            if (generate_code && semantic_errors == 0 && lexical_errors == 0) {
+                codegen_program(ast);
+            }
         }
     }
     return 0;

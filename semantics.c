@@ -414,9 +414,15 @@ void annotate_ast(struct node *node, struct symbol_table *method_table) {
             
         case Identifier:
             if (method_table && node->is_expr) {
-                struct symbol *s = lookup_symbol(method_table, sym_tables, node->token, node->line, node->col);
-                if (s && !s->is_method) node->type = s->type;
-                else { node->type = TypeUndef; printf("Line %d, col %d: Cannot find symbol %s\n", node->line, node->col, node->token); semantic_errors++; }
+                if (strcmp(node->token, "_") == 0) {
+                    node->type = TypeUndef;
+                    printf("Line %d, col %d: Symbol _ is reserved\n", node->line, node->col);
+                    semantic_errors++;
+                } else {
+                    struct symbol *s = lookup_symbol(method_table, sym_tables, node->token, node->line, node->col);
+                    if (s && !s->is_method) node->type = s->type;
+                    else { node->type = TypeUndef; printf("Line %d, col %d: Cannot find symbol %s\n", node->line, node->col, node->token); semantic_errors++; }
+                }
             }
             break;
             
@@ -516,6 +522,16 @@ void annotate_ast(struct node *node, struct symbol_table *method_table) {
                     idx++; 
                 }
                 sprintf(ptr, ")");
+
+                if (strcmp(id_node->token, "_") == 0) {
+                    node->type = TypeUndef; 
+                    id_node->func_sig = strdup("undef");
+                    printf("Line %d, col %d: Symbol _ is reserved\n", id_node->line, id_node->col); 
+                    semantic_errors++;
+                    free(at);
+                    free(call_sig);
+                    break;
+                }
                 
                 struct symbol *best = NULL; 
                 unsigned long h = hash_str(id_node->token);
@@ -635,7 +651,7 @@ void annotate_ast(struct node *node, struct symbol_table *method_table) {
             if (node->children && node->children->next) {
                 ExprType t1 = node->children->node->type;
                 ExprType t2 = node->children->next->node->type;
-                /* FIX EXTREMO: O Juc só aceita int para o ^! */
+                
                 if (t1 == TypeInt && t2 == TypeInt) {
                     node->type = TypeInt;
                 } else {
