@@ -13,6 +13,7 @@ int print_sym = 0;
 struct node *newnode(enum category category, char *token);
 void addchild(struct node *parent, struct node *child);
 void show(struct node *node, int depth);
+void free_list_and_node(struct node *n);
 
 extern int cur_line, cur_col;
 extern char *yytext;
@@ -41,7 +42,7 @@ extern char error_yytext[];
 %%
 
 Program: CLASS IDENTIFIER LBRACE ProgramDecls RBRACE { 
-            $$ = newnode(Program, NULL); 
+            $$ = newnode(Program, NULL);
             struct node *id = newnode(Identifier, $2.id);
             id->line = $2.line; id->col = $2.col;
             addchild($$, id);
@@ -51,10 +52,10 @@ Program: CLASS IDENTIFIER LBRACE ProgramDecls RBRACE {
                     addchild($$, child->node);
                     child = child->next;
                 }
-                free($4);
+                free_list_and_node($4);
             }
-            ast = $$; 
-         } 
+            ast = $$;
+        } 
        ;
 
 ProgramDecls: ProgramDecls MethodDecl { 
@@ -71,7 +72,7 @@ ProgramDecls: ProgramDecls MethodDecl {
                         addchild($$, child->node);
                         child = child->next;
                     }
-                    free($2);
+                    free_list_and_node($2);
                 }
             }
             | ProgramDecls SEMICOLON { $$ = $1; }
@@ -90,7 +91,8 @@ FieldDecl: PUBLIC STATIC Type IDENTIFIER IdList SEMICOLON {
                 struct node *first = newnode(FieldDecl, NULL);
                 addchild(first, newnode($3->category, NULL));
                 struct node *id = newnode(Identifier, $4.id);
-                id->line = $4.line; id->col = $4.col;
+                id->line = $4.line;
+                id->col = $4.col;
                 addchild(first, id);
                 addchild($$, first);
                 if ($5 != NULL) {
@@ -102,7 +104,7 @@ FieldDecl: PUBLIC STATIC Type IDENTIFIER IdList SEMICOLON {
                         addchild($$, next_field);
                         child = child->next;
                     }
-                    free($5);
+                    free_list_and_node($5);
                 }
             }
          | error SEMICOLON { $$ = NULL; }
@@ -139,7 +141,7 @@ MethodParams: FormalParams {
                         addchild($$, child->node);
                         child = child->next;
                     }
-                    free($1);
+                    free_list_and_node($1);
                 }
             }
             | { $$ = newnode(MethodParams, NULL); }
@@ -159,15 +161,16 @@ FormalParams: Type IDENTIFIER FormalParamsList {
                         addchild($$, child->node);
                         child = child->next;
                     }
-                    free($3);
+                    free_list_and_node($3);
                 }
             }
             | STRING LSQ RSQ IDENTIFIER { 
-                $$ = newnode(Program, NULL); 
+                $$ = newnode(Program, NULL);
                 struct node *p1 = newnode(ParamDecl, NULL);
                 addchild(p1, newnode(StringArray, NULL));
                 struct node *id = newnode(Identifier, $4.id);
-                id->line = $4.line; id->col = $4.col;
+                id->line = $4.line;
+                id->col = $4.col;
                 addchild(p1, id);
                 addchild($$, p1);
             }
@@ -194,7 +197,7 @@ MethodBody: LBRACE MethodBodyDecls RBRACE {
                         addchild($$, child->node);
                         child = child->next;
                     }
-                    free($2);
+                    free_list_and_node($2);
                 }
             } 
           ;
@@ -203,7 +206,7 @@ MethodBodyDecls: MethodBodyDecls Statement {
                     $$ = $1;
                     if ($$ == NULL) $$ = newnode(Program, NULL);
                     if ($2 != NULL) addchild($$, $2);
-                }
+               }
                | MethodBodyDecls VarDecl { 
                     $$ = $1;
                     if ($$ == NULL) $$ = newnode(Program, NULL);
@@ -213,7 +216,7 @@ MethodBodyDecls: MethodBodyDecls Statement {
                             addchild($$, child->node);
                             child = child->next;
                         }
-                        free($2);
+                        free_list_and_node($2);
                     }
                 }
                | { $$ = NULL; }
@@ -224,7 +227,8 @@ VarDecl: Type IDENTIFIER IdList SEMICOLON {
             struct node *first = newnode(VarDecl, NULL);
             addchild(first, newnode($1->category, NULL));
             struct node *id = newnode(Identifier, $2.id);
-            id->line = $2.line; id->col = $2.col;
+            id->line = $2.line;
+            id->col = $2.col;
             addchild(first, id);
             addchild($$, first);
             if ($3 != NULL) {
@@ -236,7 +240,7 @@ VarDecl: Type IDENTIFIER IdList SEMICOLON {
                     addchild($$, next_var);
                     child = child->next;
                 }
-                free($3);
+                free_list_and_node($3);
             }
         } 
        ;
@@ -264,10 +268,10 @@ Statement: LBRACE StatementList RBRACE
 
              if (count == 0) {
                  $$ = NULL;
-                 if ($2) free($2);
+                 if ($2) free_list_and_node($2);
              } else if (count == 1) {
                  $$ = $2->children->node;
-                 free($2);
+                 free_list_and_node($2);
              } else {
                  $$ = newnode(Block, NULL);
                  struct node_list *child = $2->children;
@@ -275,7 +279,7 @@ Statement: LBRACE StatementList RBRACE
                      addchild($$, child->node);
                      child = child->next;
                  }
-                 free($2);
+                 free_list_and_node($2);
              }
          }
          | IF LPAR Expr RPAR Statement %prec IF_NO_ELSE 
@@ -283,7 +287,7 @@ Statement: LBRACE StatementList RBRACE
              $$ = newnode(If, NULL);
              addchild($$, $3);
              addchild($$, $5 != NULL ? $5 : newnode(Block, NULL));
-             addchild($$, newnode(Block, NULL)); 
+             addchild($$, newnode(Block, NULL));
          }
          | IF LPAR Expr RPAR Statement ELSE Statement 
          { 
@@ -359,7 +363,7 @@ MethodInvocation: IDENTIFIER LPAR RPAR
                         addchild($$, child->node);
                         child = child->next;
                     }
-                    free($3);
+                    free_list_and_node($3);
                 }
                 | IDENTIFIER LPAR error RPAR { $$ = NULL; }
                 ;
@@ -470,9 +474,11 @@ ExprPostfix: MethodInvocation { $$ = $1; }
            | ParseArgs { $$ = $1; }
            | IDENTIFIER DOTLENGTH  
              { 
-                 $$ = newnode(Length, NULL); $$->line = $2.line; $$->col = $2.col;
+                 $$ = newnode(Length, NULL);
+                 $$->line = $2.line; $$->col = $2.col;
                  struct node *id = newnode(Identifier, $1.id);
-                 id->line = $1.line; id->col = $1.col; id->is_expr = 1;
+                 id->line = $1.line; id->col = $1.col;
+                 id->is_expr = 1;
                  addchild($$, id); 
              }
            | IDENTIFIER { $$ = newnode(Identifier, $1.id); $$->line = $1.line; $$->col = $1.col; $$->is_expr = 1; }
@@ -482,7 +488,6 @@ ExprPostfix: MethodInvocation { $$ = $1; }
            | LPAR Expr RPAR { $$ = $2; }
            | LPAR error RPAR { $$ = NULL; }
            ;
-
 %%
 
 struct node *newnode(enum category category, char *token) {
@@ -505,7 +510,6 @@ void addchild(struct node *parent, struct node *child) {
     struct node_list *new = malloc(sizeof(struct node_list));
     new->node = child;
     new->next = NULL;
-    
     if (parent->children == NULL) {
         parent->children = new;
         parent->tail = new;
@@ -522,6 +526,17 @@ void addchild(struct node *parent, struct node *child) {
     }
 }
 
+void free_list_and_node(struct node *n) {
+    if (!n) return;
+    struct node_list *curr = n->children;
+    while (curr) {
+        struct node_list *tmp = curr;
+        curr = curr->next;
+        free(tmp);
+    }
+    free(n);
+}
+
 const char *category_names[] = {
     "Program", "FieldDecl", "VarDecl", "MethodDecl", "MethodHeader", 
     "MethodParams", "ParamDecl", "MethodBody", "Block", "If", "While", 
@@ -535,7 +550,6 @@ const char *category_names[] = {
 void show(struct node *node, int depth) {
     if (node == NULL) return;
     for (int i = 0; i < depth; i++) printf("..");
-    
     if (node->token != NULL) {
         if (node->category == StrLit) {
             printf("%s(\"%s\")", category_names[node->category], node->token);
@@ -566,6 +580,9 @@ extern int verbose;
 int syntax_errors = 0; 
 
 int main(int argc, char *argv[]) {
+    /* FIX DE PERFORMANCE: Buffer de output instantâneo para não dar Time Limit Exceeded (TLE) */
+    setvbuf(stdout, NULL, _IOFBF, 65536);
+    
     int print_ast = 0;
     if (argc > 1) {
         if (strcmp(argv[1], "-l") == 0 || strcmp(argv[1], "-1") == 0) {
@@ -592,7 +609,6 @@ int main(int argc, char *argv[]) {
 
     yyparse();
 
-    /* SÓ ENTRA AQUI SE NÃO HOUVER ERROS DE SINTAXE (META 2) */
     if (syntax_errors == 0) {
         if (print_ast) {
             show(ast, 0);

@@ -10,19 +10,19 @@
     
     int verbose = 0;
     int string_with_error = 0;
-    char string_buf[4096];
-
+    
+    char string_buf[65536];
     int error_line = 1;
     int error_col = 1;
-    char error_yytext[8192] = "";
+    char error_yytext[70000] = "";
 
     #define YY_USER_ACTION { \
         error_line = cur_line; \
         error_col = cur_col; \
         cur_col += yyleng; \
-        strcpy(error_yytext, yytext); \
-        /* Preencher a nova estrutura da %union */ \
-        yylval.info.id = strdup(yytext); \
+        strncpy(error_yytext, yytext, 69999); \
+        error_yytext[69999] = '\0'; \
+        yylval.info.id = NULL; \
         yylval.info.line = error_line; \
         yylval.info.col = error_col; \
     }
@@ -94,7 +94,7 @@ RESERVED                        "++"|"--"|"null"|"Integer"|"System"|"abstract"|"
 
 {IGNORE}                        { }
 
-{BOOLLIT}                       { if(verbose) printf("BOOLLIT(%s)\n", yytext); PASS_TOKEN(); return BOOLLIT; }
+{BOOLLIT}                       { if(verbose) printf("BOOLLIT(%s)\n", yytext); yylval.info.id = strdup(yytext); PASS_TOKEN(); return BOOLLIT; }
 {AND}                           { if(verbose) printf("AND\n"); return AND; }
 {ASSIGN}                        { if(verbose) printf("ASSIGN\n"); return ASSIGN; }
 {STAR}                          { if(verbose) printf("STAR\n"); return STAR; }
@@ -139,12 +139,12 @@ RESERVED                        "++"|"--"|"null"|"Integer"|"System"|"abstract"|"
 {WHILE}                         { if(verbose) printf("WHILE\n"); return WHILE;}
 {RESERVED}                      { if(verbose) printf("RESERVED(%s)\n", yytext); PASS_TOKEN(); return RESERVED;}
 
-0|[1-9]([0-9_]*[0-9])?          { if(verbose) printf("NATURAL(%s)\n", yytext); PASS_TOKEN(); return NATURAL; }
-{DigitSeq}"."({DigitSeq})?({EXPONENT})? { if(verbose) printf("DECIMAL(%s)\n", yytext); PASS_TOKEN(); return DECIMAL; }
-"."{DigitSeq}({EXPONENT})?      { if(verbose) printf("DECIMAL(%s)\n", yytext); PASS_TOKEN(); return DECIMAL; }
-{DigitSeq}{EXPONENT}            { if(verbose) printf("DECIMAL(%s)\n", yytext); PASS_TOKEN(); return DECIMAL; }
+0|[1-9]([0-9_]*[0-9])?          { if(verbose) printf("NATURAL(%s)\n", yytext); yylval.info.id = strdup(yytext); PASS_TOKEN(); return NATURAL; }
+{DigitSeq}"."({DigitSeq})?({EXPONENT})? { if(verbose) printf("DECIMAL(%s)\n", yytext); yylval.info.id = strdup(yytext); PASS_TOKEN(); return DECIMAL; }
+"."{DigitSeq}({EXPONENT})?      { if(verbose) printf("DECIMAL(%s)\n", yytext); yylval.info.id = strdup(yytext); PASS_TOKEN(); return DECIMAL; }
+{DigitSeq}{EXPONENT}            { if(verbose) printf("DECIMAL(%s)\n", yytext); yylval.info.id = strdup(yytext); PASS_TOKEN(); return DECIMAL; }
 
-{letter}({digit}|{letter})* { if(verbose) printf("IDENTIFIER(%s)\n", yytext); PASS_TOKEN(); return IDENTIFIER; }
+{letter}({digit}|{letter})* { if(verbose) printf("IDENTIFIER(%s)\n", yytext); yylval.info.id = strdup(yytext); PASS_TOKEN(); return IDENTIFIER; }
 
 {NEWLINE}                       { cur_line++; cur_col = 1; }
 
@@ -165,7 +165,10 @@ RESERVED                        "++"|"--"|"null"|"Integer"|"System"|"abstract"|"
 <MULTI_COMMENT>.                { }
 
 "\""                            { start_line = cur_line; start_col = cur_col - yyleng; string_buf[0] = '\0'; string_with_error = 0; BEGIN(STR_STATE); }
-<STR_STATE>"\\"{escape}         { strcat(string_buf, yytext); }
+<STR_STATE>"\\"{escape}         { 
+    /* Proteção de Buffer na concatenação */
+    if (strlen(string_buf) + yyleng < 65535) strcat(string_buf, yytext); 
+}
 <STR_STATE>"\\"[^\n\r]          { printf("Line %d, col %d: invalid escape sequence (%s)\n", cur_line, cur_col - (int)yyleng, yytext); string_with_error = 1; }
 <STR_STATE>"\\"                 { printf("Line %d, col %d: invalid escape sequence (\\)\n", cur_line, cur_col - (int)yyleng); string_with_error = 1; }
 <STR_STATE>{NEWLINE}            { printf("Line %d, col %d: unterminated string literal\n", start_line, start_col); cur_line++; cur_col = 1; BEGIN(INITIAL); }
@@ -173,11 +176,9 @@ RESERVED                        "++"|"--"|"null"|"Integer"|"System"|"abstract"|"
     BEGIN(INITIAL); 
     if(!string_with_error) {
         if(verbose) printf("STRLIT(\"%s\")\n", string_buf);
-        
         yylval.info.id = strdup(string_buf);
         yylval.info.line = start_line;
         yylval.info.col = start_col;
-        
         error_line = start_line;
         error_col = start_col;
         sprintf(error_yytext, "\"%s\"", string_buf); 
@@ -186,7 +187,10 @@ RESERVED                        "++"|"--"|"null"|"Integer"|"System"|"abstract"|"
     }
 }
 <STR_STATE><<EOF>>              { printf("Line %d, col %d: unterminated string literal\n", start_line, start_col); return 0; }
-<STR_STATE>.                    { strcat(string_buf, yytext); }
+<STR_STATE>.                    { 
+    /* Proteção de Buffer na concatenação */
+    if (strlen(string_buf) + yyleng < 65535) strcat(string_buf, yytext); 
+}
 
 .                               { printf("Line %d, col %d: illegal character (%s)\n", cur_line, cur_col - (int)yyleng, yytext); }
 <<EOF>> { 
