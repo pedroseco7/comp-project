@@ -11,5 +11,5 @@ lex jucompiler.l
 cc -o jucompiler lex.yy.c y.tab.c semantics.c codegen.c -Wall -Wno-unused-function
 
 # Copiar para a pasta de testes
-cp jucompiler ../tests/comp/jucompiler
-echo "Compilação concluída com sucesso e copiado para ../tests/comp/jucompiler!"
+cp jucompiler ../tests/comp/java/jucompiler
+echo "Compilação concluída com sucesso e copiado para ../tests/comp/java/jucompiler!"
