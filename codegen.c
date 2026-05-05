@@ -22,7 +22,7 @@ void codegen_field(struct node *field_node);
 
 struct local_var_info {
     char *name;
-    char reg_name[32]; // AGORA GUARDA O NOME DA VARIÁVEL LLVM (ex: "%v_1")
+    char reg_name[32];
     ExprType type;
 };
 struct local_var_info local_vars[1000];
@@ -34,7 +34,6 @@ int num_global_vars = 0;
 int var_alloc_counter = 0;
 int var_use_counter = 0;
 
-// O RETORNO AGORA É UMA STRING (PARA SUPORTAR VARIÁVEIS NOMEADAS)
 const char* get_local_var(char *name) {
     for (int i = num_local_vars - 1; i >= 0; i--) {
         if (strcmp(local_vars[i].name, name) == 0) return local_vars[i].reg_name;
@@ -119,20 +118,52 @@ void get_mangled_name(struct node *method_node, char *buffer) {
 
 int get_llvm_string_length(const char *token) {
     int len = strlen(token);
-    int start = (token[0] == '"') ? 1 : 0;
-    int end = (token[len-1] == '"') ? len - 1 : len;
+    int start = 0;
+    int end = len;
+    
+    if (len >= 2 && token[0] == '"' && token[len-1] == '"') {
+        int backslashes = 0;
+        for (int i = len - 2; i >= 0; i--) {
+            if (token[i] == '\\') backslashes++;
+            else break;
+        }
+        if (backslashes % 2 == 0) {
+            start = 1;
+            end = len - 1;
+        }
+    }
+    
     int real_len = 0;
     for (int i = start; i < end; i++) {
-        if (token[i] == '\\' && i + 1 < end) { i++; }
+        if (token[i] == '\\' && i + 1 < end) {
+            char next = token[i+1];
+            if (next == 'n' || next == 't' || next == 'r' || next == 'f' || 
+                next == 'b' || next == '\\' || next == '"' || next == '\'') {
+                i++;
+            }
+        }
         real_len++;
     }
-    return real_len + 1; 
+    return real_len + 1;
 }
 
 void print_llvm_string_literal(const char *token) {
     int len = strlen(token);
-    int start = (token[0] == '"') ? 1 : 0;
-    int end = (token[len-1] == '"') ? len - 1 : len;
+    int start = 0;
+    int end = len;
+    
+    if (len >= 2 && token[0] == '"' && token[len-1] == '"') {
+        int backslashes = 0;
+        for (int i = len - 2; i >= 0; i--) {
+            if (token[i] == '\\') backslashes++;
+            else break;
+        }
+        if (backslashes % 2 == 0) {
+            start = 1;
+            end = len - 1;
+        }
+    }
+    
     for (int i = start; i < end; i++) {
         unsigned char c = token[i];
         if (c == '\\' && i + 1 < end) {
@@ -145,8 +176,9 @@ void print_llvm_string_literal(const char *token) {
             else if (next == '\\') { printf("\\5C"); i++; }
             else if (next == '"') { printf("\\22"); i++; }
             else if (next == '\'') { printf("\\27"); i++; }
-            else { printf("\\%02X", next); i++; }
+            else { printf("\\5C"); }
         } 
+        else if (c == '\\') { printf("\\5C"); }
         else if (c == '\n') { printf("\\0A"); }
         else if (c == '\r') { printf("\\0D"); }
         else if (c == '\t') { printf("\\09"); }
@@ -686,7 +718,6 @@ int codegen_expression(struct node *expr) {
     }
 }
 
-// PASSO 1: A MÁGICA DA OTIMIZAÇÃO (Alocar tudo no topo para evitar Stack Overflows!)
 void print_allocas(struct node *current) {
     if (!current) return;
     if (current->category == VarDecl) {
@@ -757,8 +788,8 @@ void codegen_program(struct node *program) {
 void codegen_method(struct node *method_node) {
     temporary = 1; 
     num_local_vars = 0;
-    var_alloc_counter = 0; // Reinicia a cada função!
-    var_use_counter = 0;   // Reinicia a cada função!
+    var_alloc_counter = 0;
+    var_use_counter = 0;
     block_terminated = 0; 
     current_string_array_param = NULL;
     
@@ -795,7 +826,6 @@ void codegen_method(struct node *method_node) {
         printf(") {\n");
     }
     
-    // Alocações Especiais de Topo (O1 Stack footprint)
     printf("  %%sc_temp = alloca i1\n");
     print_allocas(body);
     

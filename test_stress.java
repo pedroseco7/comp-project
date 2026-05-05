@@ -6,6 +6,7 @@ class StressTest {
         count = 0;
 
         System.out.print("A iniciar o teste de stress...\n");
+        System.out.print("\"");
 
         // Loop que itera 10 milhões de vezes
         while (i < 10000000) {
