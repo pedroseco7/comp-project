@@ -11,7 +11,7 @@ int use_str_id = 0;
 int block_terminated = 0;
 char *current_method_name = NULL;
 ExprType current_method_ret_type = TypeVoid;
-char *current_string_array_param = NULL; // Guarda o nome do array de argumentos!
+char *current_string_array_param = NULL; 
 
 struct node *global_root_ast = NULL;
 
@@ -22,7 +22,7 @@ void codegen_field(struct node *field_node);
 
 struct local_var_info {
     char *name;
-    int reg_ptr;
+    char reg_name[32]; // AGORA GUARDA O NOME DA VARIÁVEL LLVM (ex: "%v_1")
     ExprType type;
 };
 struct local_var_info local_vars[1000];
@@ -31,12 +31,15 @@ int num_local_vars = 0;
 struct local_var_info global_vars[1000];
 int num_global_vars = 0;
 
-int get_local_var(char *name) {
-    // Procura as variáveis mais recentes primeiro (respeitando o scope!)
+int var_alloc_counter = 0;
+int var_use_counter = 0;
+
+// O RETORNO AGORA É UMA STRING (PARA SUPORTAR VARIÁVEIS NOMEADAS)
+const char* get_local_var(char *name) {
     for (int i = num_local_vars - 1; i >= 0; i--) {
-        if (strcmp(local_vars[i].name, name) == 0) return local_vars[i].reg_ptr;
+        if (strcmp(local_vars[i].name, name) == 0) return local_vars[i].reg_name;
     }
-    return -1; 
+    return NULL; 
 }
 
 const char* get_llvm_type(ExprType type) {
@@ -54,11 +57,7 @@ ExprType get_actual_type(struct node *expr) {
     switch (expr->category) {
         case Natural: case Length: return TypeInt;
         case Decimal: return TypeDouble;
-        case ParseArgs: {
-            struct node *id_node = expr->children->node;
-            if (id_node && strstr(id_node->token, "Double")) return TypeDouble;
-            return TypeInt;
-        }
+        case ParseArgs: return expr->type;
         case BoolLit: case Eq: case Ne: case Lt: case Le: case Gt: case Ge: case And: case Or: case Xor: case Not: return TypeBoolean;
         case Identifier: {
             if (current_string_array_param && strcmp(expr->token, current_string_array_param) == 0) return TypeVoid;
@@ -74,7 +73,6 @@ ExprType get_actual_type(struct node *expr) {
         case Add: case Sub: case Mul: case Div: case Mod:
             if (get_actual_type(expr->children->node) == TypeDouble || get_actual_type(expr->children->next->node) == TypeDouble) return TypeDouble;
             return TypeInt;
-        // A CURA DO DIVISIONS (n2 = n1 = 0): Analisa sempre a variável alvo, não o valor bruto!
         case Assign: return get_actual_type(expr->children->node); 
         case Call: return expr->type;
         default: return expr->type;
@@ -214,27 +212,16 @@ void emit_br(int label) {
 void codegen_statement(struct node *stmt) {
     if (!stmt || block_terminated) return;
     
-    // A CURA DO COMPLEX (Escopo Nativo do Java): A variável só existe DEPOIS de declarada!
     if (stmt->category == VarDecl) {
         struct node *v_type_node = stmt->children->node;
         struct node_list *id_list = stmt->children->next; 
-        const char *ll_type = get_llvm_type(get_expr_type(v_type_node->category));
         
         while (id_list != NULL) {
+            var_use_counter++;
             struct node *v_id_node = id_list->node;
-            int ptr_reg = temporary++;
-            
-            printf("  %%%d = alloca %s\n", ptr_reg, ll_type);
-            if (get_expr_type(v_type_node->category) == TypeDouble) {
-                printf("  store double 0.0, double* %%%d\n", ptr_reg);
-            } else if (get_expr_type(v_type_node->category) == TypeBoolean) {
-                printf("  store i1 0, i1* %%%d\n", ptr_reg);
-            } else {
-                printf("  store i32 0, i32* %%%d\n", ptr_reg);
-            }
 
             local_vars[num_local_vars].name = v_id_node->token;
-            local_vars[num_local_vars].reg_ptr = ptr_reg;
+            sprintf(local_vars[num_local_vars].reg_name, "%%v_%d", var_use_counter);
             local_vars[num_local_vars].type = get_expr_type(v_type_node->category);
             num_local_vars++;
             
@@ -294,9 +281,9 @@ void codegen_statement(struct node *stmt) {
             block_terminated = 1;
         }
         emit_label(then_block);
-        int saved_then = num_local_vars; // Salva o escopo local!
+        int saved_then = num_local_vars; 
         codegen_statement(stmt->children->next->node);
-        num_local_vars = saved_then;     // Restaura o escopo!
+        num_local_vars = saved_then;     
         emit_br(end_block);
         
         emit_label(else_block);
@@ -321,9 +308,9 @@ void codegen_statement(struct node *stmt) {
             block_terminated = 1;
         }
         emit_label(body_block);
-        int saved_body = num_local_vars; // Salva o escopo do loop!
+        int saved_body = num_local_vars; 
         codegen_statement(stmt->children->next->node);
-        num_local_vars = saved_body;     // Restaura o escopo!
+        num_local_vars = saved_body;     
         emit_br(cond_block);
         emit_label(end_block);
     }
@@ -347,13 +334,13 @@ void codegen_statement(struct node *stmt) {
         }
     }
     else if (stmt->category == Block) {
-        int saved_block = num_local_vars; // Salva o escopo do bloco base!
+        int saved_block = num_local_vars; 
         struct node_list *child = stmt->children;
         while (child != NULL) {
             codegen_statement(child->node);
             child = child->next;
         }
-        num_local_vars = saved_block;     // Restaura o escopo!
+        num_local_vars = saved_block;     
     }
     else {
         codegen_expression(stmt);
@@ -386,15 +373,14 @@ int codegen_expression(struct node *expr) {
             return tmp;
         }
         case Identifier: {
-            // A CURA DO RETURN_TYPES: Interceta arrays passados como argumento
             if (current_string_array_param && strcmp(expr->token, current_string_array_param) == 0) return -2;
             
-            int ptr = get_local_var(expr->token);
+            const char *ptr = get_local_var(expr->token);
             ExprType actual_type = get_actual_type(expr);
             const char *ll_type = get_llvm_type(actual_type);
             int tmp = temporary++; 
-            if (ptr != -1) {
-                printf("  %%%d = load %s, %s* %%%d\n", tmp, ll_type, ll_type, ptr);
+            if (ptr != NULL) {
+                printf("  %%%d = load %s, %s* %s\n", tmp, ll_type, ll_type, ptr);
             } else { 
                 printf("  %%%d = load %s, %s* @%s\n", tmp, ll_type, ll_type, expr->token);
             }
@@ -412,11 +398,11 @@ int codegen_expression(struct node *expr) {
                 val_reg = promote_to_double(val_reg, TypeInt);
             }
             
-            int ptr = get_local_var(id_node->token);
+            const char *ptr = get_local_var(id_node->token);
             const char *ll_type = get_llvm_type(id_actual);
             
-            if (ptr != -1) {
-                printf("  store %s %%%d, %s* %%%d\n", ll_type, val_reg, ll_type, ptr);
+            if (ptr != NULL) {
+                printf("  store %s %%%d, %s* %s\n", ll_type, val_reg, ll_type, ptr);
             } else { 
                 printf("  store %s %%%d, %s* @%s\n", ll_type, val_reg, ll_type, id_node->token);
             }
@@ -453,7 +439,7 @@ int codegen_expression(struct node *expr) {
             int e1 = codegen_expression(expr->children->node);
             int tmp = temporary++;
             if (get_actual_type(expr->children->node) == TypeDouble) {
-                printf("  %%%d = fmul double %%%d, -1.0\n", tmp, e1);
+                printf("  %%%d = fmul double %%%d, -1.0\n", tmp, e1); 
             } else {
                 printf("  %%%d = sub i32 0, %%%d\n", tmp, e1);
             }
@@ -486,7 +472,6 @@ int codegen_expression(struct node *expr) {
                 if(expr->category == Ge) printf("  %%%d = fcmp oge double %%%d, %%%d\n", tmp, e1, e2);
                 return tmp;
             } else if (is_bool) {
-                // A CURA DO RANDOMTEST (Boleanos usam nativo i1 no LLVM)
                 int tmp = temporary++;
                 if(expr->category == Eq) printf("  %%%d = icmp eq i1 %%%d, %%%d\n", tmp, e1, e2);
                 if(expr->category == Ne) printf("  %%%d = icmp ne i1 %%%d, %%%d\n", tmp, e1, e2);
@@ -503,10 +488,8 @@ int codegen_expression(struct node *expr) {
             }
         }
         case And: {
-            int res_ptr = temporary++;
-            printf("  %%%d = alloca i1\n", res_ptr);
             int e1 = codegen_expression(expr->children->node);
-            printf("  store i1 %%%d, i1* %%%d\n", e1, res_ptr);
+            printf("  store i1 %%%d, i1* %%sc_temp\n", e1);
             
             int eval_right = label_counter++;
             int end_block = label_counter++;
@@ -519,21 +502,19 @@ int codegen_expression(struct node *expr) {
             emit_label(eval_right);
             int e2 = codegen_expression(expr->children->next->node);
             if (!block_terminated) {
-                printf("  store i1 %%%d, i1* %%%d\n", e2, res_ptr);
+                printf("  store i1 %%%d, i1* %%sc_temp\n", e2);
                 printf("  br label %%L%d\n", end_block);
                 block_terminated = 1;
             }
             
             emit_label(end_block);
             int tmp = temporary++;
-            printf("  %%%d = load i1, i1* %%%d\n", tmp, res_ptr);
+            printf("  %%%d = load i1, i1* %%sc_temp\n", tmp);
             return tmp;
         }
         case Or: {
-            int res_ptr = temporary++;
-            printf("  %%%d = alloca i1\n", res_ptr);
             int e1 = codegen_expression(expr->children->node);
-            printf("  store i1 %%%d, i1* %%%d\n", e1, res_ptr);
+            printf("  store i1 %%%d, i1* %%sc_temp\n", e1);
             
             int eval_right = label_counter++;
             int end_block = label_counter++;
@@ -546,14 +527,14 @@ int codegen_expression(struct node *expr) {
             emit_label(eval_right);
             int e2 = codegen_expression(expr->children->next->node);
             if (!block_terminated) {
-                printf("  store i1 %%%d, i1* %%%d\n", e2, res_ptr);
+                printf("  store i1 %%%d, i1* %%sc_temp\n", e2);
                 printf("  br label %%L%d\n", end_block);
                 block_terminated = 1;
             }
             
             emit_label(end_block);
             int tmp = temporary++;
-            printf("  %%%d = load i1, i1* %%%d\n", tmp, res_ptr);
+            printf("  %%%d = load i1, i1* %%sc_temp\n", tmp);
             return tmp;
         }
         case Lshift: {
@@ -656,15 +637,19 @@ int codegen_expression(struct node *expr) {
             
             const char *ret_ll_type = get_llvm_type(expr->type);
             int tmp = -1;
-            if (expr->type == TypeVoid) {
+            
+            if (strcmp(mangled_name, "main") == 0) {
+                tmp = temporary++;
+                printf("  %%%d = call i32 @main(", tmp);
+            } else if (expr->type == TypeVoid) {
                 printf("  call void @%s(", mangled_name); 
             } else {
                 tmp = temporary++;
                 printf("  %%%d = call %s @%s(", tmp, ret_ll_type, mangled_name);
             }
+            
             for (int i = 0; i < num_args; i++) {
                 if (i > 0) printf(", ");
-                // A CURA FINAL DO RETURN_TYPES: Enviar argc e argv ao método certo
                 if (arg_regs[i] == -2) {
                     printf("i32 %%argc, i8** %%argv");
                 } else {
@@ -689,8 +674,7 @@ int codegen_expression(struct node *expr) {
             printf("  %%%d = load i8*, i8** %%%d\n", str_reg, ptr_reg);
             int res_reg = temporary++;
             
-            struct node *id_node = expr->children->node;
-            if (id_node && strstr(id_node->token, "Double")) {
+            if (expr->type == TypeDouble) {
                 printf("  %%%d = call double @atof(i8* %%%d)\n", res_reg, str_reg);
             } else {
                 printf("  %%%d = call i32 @atoi(i8* %%%d)\n", res_reg, str_reg);
@@ -699,6 +683,35 @@ int codegen_expression(struct node *expr) {
         }
         default:
             return -1; 
+    }
+}
+
+// PASSO 1: A MÁGICA DA OTIMIZAÇÃO (Alocar tudo no topo para evitar Stack Overflows!)
+void print_allocas(struct node *current) {
+    if (!current) return;
+    if (current->category == VarDecl) {
+        struct node *v_type_node = current->children->node;
+        struct node_list *id_list = current->children->next; 
+        const char *ll_type = get_llvm_type(get_expr_type(v_type_node->category));
+        
+        while (id_list != NULL) {
+            var_alloc_counter++;
+            printf("  %%v_%d = alloca %s\n", var_alloc_counter, ll_type);
+            if (get_expr_type(v_type_node->category) == TypeDouble) {
+                printf("  store double 0.0, double* %%v_%d\n", var_alloc_counter);
+            } else if (get_expr_type(v_type_node->category) == TypeBoolean) {
+                printf("  store i1 0, i1* %%v_%d\n", var_alloc_counter);
+            } else {
+                printf("  store i32 0, i32* %%v_%d\n", var_alloc_counter);
+            }
+            id_list = id_list->next;
+        }
+    }
+    
+    struct node_list *child = current->children;
+    while (child != NULL) {
+        print_allocas(child->node);
+        child = child->next;
     }
 }
 
@@ -744,6 +757,8 @@ void codegen_program(struct node *program) {
 void codegen_method(struct node *method_node) {
     temporary = 1; 
     num_local_vars = 0;
+    var_alloc_counter = 0; // Reinicia a cada função!
+    var_use_counter = 0;   // Reinicia a cada função!
     block_terminated = 0; 
     current_string_array_param = NULL;
     
@@ -780,6 +795,10 @@ void codegen_method(struct node *method_node) {
         printf(") {\n");
     }
     
+    // Alocações Especiais de Topo (O1 Stack footprint)
+    printf("  %%sc_temp = alloca i1\n");
+    print_allocas(body);
+    
     struct node_list *param = params_node->children;
     while (param != NULL) {
         struct node *p_type_node = param->node->children->node;
@@ -791,14 +810,15 @@ void codegen_method(struct node *method_node) {
             const char *ll_type = get_llvm_type(get_expr_type(p_type_node->category));
             printf("  %%%d = alloca %s\n", ptr_reg, ll_type);
             printf("  store %s %%%s, %s* %%%d\n", ll_type, p_id_node->token, ll_type, ptr_reg);
+            
             local_vars[num_local_vars].name = p_id_node->token;
-            local_vars[num_local_vars].reg_ptr = ptr_reg;
+            sprintf(local_vars[num_local_vars].reg_name, "%%%d", ptr_reg);
             local_vars[num_local_vars].type = get_expr_type(p_type_node->category);
             num_local_vars++;
         }
         param = param->next;
     }
-    
+
     struct node_list *stmt = body->children;
     while (stmt != NULL) {
         codegen_statement(stmt->node);
