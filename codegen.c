@@ -48,13 +48,12 @@ const char* get_llvm_type(ExprType type) {
     }
 }
 
-// O BUG DO PARSEARGS FOI ERRADICADO AQUI!
 ExprType get_actual_type(struct node *expr) {
     if (!expr) return TypeVoid;
     switch (expr->category) {
         case Natural: case Length: return TypeInt;
         case Decimal: return TypeDouble;
-        case ParseArgs: return expr->type; // <--- AGORA RESPEITA O TIPO VERDADEIRO (Resolve divisions, randomTest, return_types)
+        case ParseArgs: return expr->type; // A CURA DO DIVISIONS (Confia na semântica!)
         case BoolLit: case Eq: case Ne: case Lt: case Le: case Gt: case Ge: case And: case Or: case Xor: case Not: return TypeBoolean;
         case Identifier: {
             for (int i = num_local_vars - 1; i >= 0; i--) {
@@ -135,8 +134,8 @@ void print_llvm_string_literal(const char *token) {
             char next = token[i+1];
             if (next == 'n') { printf("\\0A"); i++; }
             else if (next == 't') { printf("\\09"); i++; }
-            else if (next == 'r') { printf("\\0A"); i++; } // <--- O SEGREDO DO C_e_D (Convertido para Newline)
-            else if (next == 'f') { printf("\\0C"); i++; } 
+            else if (next == 'r') { printf("\\0D"); i++; } // A CURA DO C_e_D E COMPLEX! (\r fiel)
+            else if (next == 'f') { printf("\\0C"); i++; } // A CURA DO C_e_D E COMPLEX! (\f fiel)
             else if (next == 'b') { printf("\\08"); i++; } 
             else if (next == '\\') { printf("\\5C"); i++; }
             else if (next == '"') { printf("\\22"); i++; }
@@ -144,9 +143,9 @@ void print_llvm_string_literal(const char *token) {
             else { printf("\\%02X", next); i++; }
         } 
         else if (c == '\n') { printf("\\0A"); }
-        else if (c == '\r') { printf("\\0A"); } // <--- Normalização Unix
+        else if (c == '\r') { printf("\\0D"); } // \r Fiel
         else if (c == '\t') { printf("\\09"); }
-        else if (c == '\f') { printf("\\0C"); }
+        else if (c == '\f') { printf("\\0C"); } // \f Fiel
         else if (c == '\b') { printf("\\08"); }
         else if (c == '"')  { printf("\\22"); }
         else {
@@ -403,8 +402,11 @@ int codegen_expression(struct node *expr) {
         case Minus: {
             int e1 = codegen_expression(expr->children->node);
             int tmp = temporary++;
-            if (get_actual_type(expr->children->node) == TypeDouble) printf("  %%%d = fsub double -0.0, %%%d\n", tmp, e1);
-            else printf("  %%%d = sub i32 0, %%%d\n", tmp, e1);
+            if (get_actual_type(expr->children->node) == TypeDouble) {
+                printf("  %%%d = fmul double %%%d, -1.0\n", tmp, e1);
+            } else {
+                printf("  %%%d = sub i32 0, %%%d\n", tmp, e1);
+            }
             return tmp;
         }
         case Not: {
@@ -420,6 +422,8 @@ int codegen_expression(struct node *expr) {
             ExprType t2 = get_actual_type(expr->children->next->node);
             
             int is_double = (t1 == TypeDouble || t2 == TypeDouble);
+            int is_bool = (t1 == TypeBoolean || t2 == TypeBoolean);
+            
             if (is_double) {
                 e1 = promote_to_double(e1, t1);
                 e2 = promote_to_double(e2, t2);
@@ -430,6 +434,12 @@ int codegen_expression(struct node *expr) {
                 if(expr->category == Le) printf("  %%%d = fcmp ole double %%%d, %%%d\n", tmp, e1, e2);
                 if(expr->category == Gt) printf("  %%%d = fcmp ogt double %%%d, %%%d\n", tmp, e1, e2);
                 if(expr->category == Ge) printf("  %%%d = fcmp oge double %%%d, %%%d\n", tmp, e1, e2);
+                return tmp;
+            } else if (is_bool) {
+                // A CURA DO RANDOMTEST (Boleanos usam i1 nativo)
+                int tmp = temporary++;
+                if(expr->category == Eq) printf("  %%%d = icmp eq i1 %%%d, %%%d\n", tmp, e1, e2);
+                if(expr->category == Ne) printf("  %%%d = icmp ne i1 %%%d, %%%d\n", tmp, e1, e2);
                 return tmp;
             } else {
                 int tmp = temporary++;
@@ -526,7 +536,6 @@ int codegen_expression(struct node *expr) {
             
             char mangled_name[256];
             strcpy(mangled_name, func_name); 
-            // O BUG DO CALL (A SOLUÇÃO PARA O COMPLEX) OCORRE AQUI!
             if (global_root_ast != NULL) {
                 struct node *exact_match = NULL;
                 struct node *compat_match = NULL;
@@ -720,7 +729,12 @@ void codegen_method(struct node *method_node) {
             struct node *p_type_node = param->node->children->node;
             struct node *p_id_node = param->node->children->next->node;
             if (p_count > 0) printf(", ");
-            printf("%s %%%s", get_llvm_type(get_expr_type(p_type_node->category)), p_id_node->token);
+            // A CURA DO %argc FANTASMA EM OUTRAS FUNÇÕES!
+            if (p_type_node->category == StringArray) {
+                printf("i32 %%argc, i8** %%argv");
+            } else {
+                printf("%s %%%s", get_llvm_type(get_expr_type(p_type_node->category)), p_id_node->token);
+            }
             p_count++; param = param->next;
         }
         printf(") {\n");
