@@ -168,7 +168,6 @@ RESERVED                        "++"|"--"|"null"|"Integer"|"System"|"abstract"|"
 
 "\""                            { start_line = cur_line; start_col = cur_col - yyleng; string_buf[0] = '\0'; string_with_error = 0; BEGIN(STR_STATE); }
 <STR_STATE>"\\"{escape}         { 
-    /* Proteção de Buffer na concatenação */
     if (strlen(string_buf) + yyleng < 65535) strcat(string_buf, yytext); 
 }
 <STR_STATE>"\\"[^\n\r]          { printf("Line %d, col %d: invalid escape sequence (%s)\n", cur_line, cur_col - (int)yyleng, yytext); string_with_error = 1; }
@@ -190,7 +189,6 @@ RESERVED                        "++"|"--"|"null"|"Integer"|"System"|"abstract"|"
 }
 <STR_STATE><<EOF>>              { printf("Line %d, col %d: unterminated string literal\n", start_line, start_col); return 0; }
 <STR_STATE>.                    { 
-    /* Proteção de Buffer na concatenação */
     if (strlen(string_buf) + yyleng < 65535) strcat(string_buf, yytext); 
 }
 

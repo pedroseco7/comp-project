@@ -1,7 +1,7 @@
 #ifndef _SEMANTICS_H
 #define _SEMANTICS_H
 
-/* Tipos semânticos da linguagem Juc [cite: 301, 305, 602] */
+/* Tipos semânticos da linguagem Juc */
 typedef enum {
     TypeInt, 
     TypeDouble, 
@@ -13,7 +13,7 @@ typedef enum {
     TypeString
 } ExprType;
 
-/* Categorias da AST (migradas do seu .y) */
+/* Categorias da AST */
 enum category {
     Program, FieldDecl, VarDecl, MethodDecl, MethodHeader, 
     MethodParams, ParamDecl, MethodBody, Block, If, While, 
@@ -24,7 +24,7 @@ enum category {
     StrLit, StringArray, Void
 };
 
-/* Estrutura do Nó da Árvore com campos de anotação [cite: 646] */
+/* Estrutura do Nó da Árvore com campos de anotação */
 struct node {
     enum category category;
     char *token;
@@ -34,7 +34,7 @@ struct node {
     char *func_sig;
     int line, col;
     struct node_list *children;
-    struct node_list *tail; /* NOVO: Ponteiro O(1) para a árvore */
+    struct node_list *tail;
 };
 
 struct node_list {
@@ -42,7 +42,7 @@ struct node_list {
     struct node_list *next;
 };
 
-/* Estrutura de um Símbolo na Tabela [cite: 604] */
+/* Estrutura de um Símbolo na Tabela */
 struct symbol {
     char *name;
     ExprType type;
@@ -58,14 +58,13 @@ struct symbol_table {
     char *table_name;
     char *table_type;
     struct symbol *first_symbol; 
-    struct symbol *last_symbol; /* NOVO: Ponteiro O(1) para os símbolos */
+    struct symbol *last_symbol;
     struct symbol_table *next;
 };
 
 extern struct symbol_table *sym_tables;
 extern int semantic_errors;
 
-/* Funções de gestão */
 void build_symbol_tables(struct node *ast_root);
 void print_symbol_tables();
 void annotate_ast(struct node *node, struct symbol_table *method_table);

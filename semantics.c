@@ -13,7 +13,6 @@ int semantic_errors = 0;
 ExprType global_p_types[MAX_PARAMS];
 ExprType global_at[MAX_PARAMS];
 
-/* Cache Hash Map O(1) para Símbolos - VELOCIDADE MÁXIMA */
 struct symbol_cache_node {
     struct symbol_table *table;
     struct symbol *sym;
@@ -21,7 +20,6 @@ struct symbol_cache_node {
 };
 struct symbol_cache_node *sym_cache[HASH_SIZE];
 
-/* Cache Hash Map O(1) para Tabelas - ELIMINA O TLE NO MOOSHAK! */
 struct table_cache_node {
     struct symbol_table *table;
     struct table_cache_node *next;
@@ -156,7 +154,6 @@ struct symbol *insert_symbol(struct symbol_table *table, char *name, ExprType ty
         table->last_symbol = new_s;
     }
     
-    /* FIX DE PERFORMANCE: Tudo vai para a cache para mantermos pesquisa O(1) */
     add_to_cache(table, new_s);
     return new_s;
 }
@@ -169,7 +166,6 @@ void check_and_insert(struct symbol_table *table, struct node *id_node, ExprType
         semantic_errors++; return;
     }
     
-    /* O(1) Lookup: O Mooshak não nos vence pelo cansaço! */
     unsigned long h = hash_str(name);
     struct symbol_cache_node *curr = sym_cache[h];
     while (curr != NULL) {
@@ -258,7 +254,6 @@ void build_symbol_tables(struct node *ast_root) {
 
             if (is_method_redefined(global_table, id_node->token, p_types, p_count)) {
                 
-                /* Tabela dummy restaurada! Mas com limpeza à prova de bala! */
                 struct symbol_table *dummy = create_table("dummy", "Method");
                 struct node_list *p2 = params_node->children;
                 while(p2) { 
@@ -275,7 +270,6 @@ void build_symbol_tables(struct node *ast_root) {
                 decl->is_duplicate = 1; 
                 free(p_types);
                 
-                /* LIMPEZA SEGURA: Sem Memory Leak (MLE) e Sem Segfault! */
                 struct symbol *curr_sym = dummy->first_symbol;
                 while (curr_sym) {
                     struct symbol *next_sym = curr_sym->next;
@@ -368,7 +362,6 @@ void annotate_ast(struct node *node, struct symbol_table *method_table) {
         }
         sprintf(ptr, ")");
         
-        /* Pesquisa imediata! */
         method_table = get_table_from_cache(sig);
         free(sig);
     }
