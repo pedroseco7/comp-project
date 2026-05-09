@@ -14,3 +14,17 @@ A conversão da gramática original EBNF da linguagem Juc para LALR(1) exigiu re
 - **Simplificação Dinâmica da Árvore**: A gramática otimiza a árvore em tempo de análise sintática. Na produção de blocos de instruções (Statement -> LBRACE StatementList RBRACE), a ação semântica avalia a cardinalidade da lista: blocos vazios retornam NULL e blocos com apenas uma instrução promovem esse filho diretamente. Isto suprime a alocação de nós Block supérfluos, minimizando a pegada de memória da AST. 
 
 - **Recuperação de Erros**: A gramática implementa pontos de sincronização utilizando a palavra-chave error em produções estratégicas (e.g., Statement -> error SEMICOLON e MethodInvocation -> IDENTIFIER LPAR error RPAR). isto permite o resgate local da análise sintática, descartando tokens inválidos até encontrar um delimitador seguro como o ; ou ), evitando a interrupção prematura da compilação.
+
+
+### 2. Algoritmos e Estruturas de Dados
+Esta secção descreve as estruturas fundamentais que suportam a análise semântica e a geração de código, focando-se na eficiência algorítmica para processar programas mais complexas.
+
+- **Árvore de Sintaxe Abstrata (AST)**: A AST é implementada através de uma estrutura de dados `node`, composta por uma categoria (enum), metadados de localização (`line`, `col`) e anotações de tipo (`ExprType`).
+    - **Otimização de Inserção O(1)**: Ao contrário de implementações que percorrem a lista de filhos para adicionar um novo nó, a nossa estrutura inclui um ponteiro `tail`. Isto permite que a função `addchild` execute a ligação de novos ramos em tempo constante, independentemente da dimensão da árvore.
+    - **Anotação e Travessia**: O algoritmo de anotação (`annotate_ast`) utiliza uma travessia *post-order* recursiva. Isto garante que os tipos das folhas (literais e identificadores) sejam determinados antes da validação dos nós pais (operadores), permitindo a propagação correta de tipos e a deteção de imcompatibilidades semânticas
+
+- **Tabelas de Símbolos e Gestão de Escopo**: A tabela de símbolos segue uma hierarquia de escopos, onde uma tabela global (`Class`) contém referências para tabelas locais (`Method`). Cada entrada é representada pela estrutura `symbol`, que armazena assinaturas de métodos, tipos de retorno e parâmetros.
+
+- **Cache Hash Maps**: Para garantir a viabilidade do compilador perante testes massivos do Mooshak, implementámos uma camada de cache sobre as tabelas de símbolos.
+    - **Indexação Global O(1)**: Através da função de dispersão `hash_str`, criámos os mapas `sys_cache` e `table_cache_map` com um tamanho de 65537 entradas. 
+    - **Pesquisa Eficiente**: Esta estrutura transforma
