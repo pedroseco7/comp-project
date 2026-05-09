@@ -27,7 +27,8 @@ Esta secção descreve as estruturas fundamentais que suportam a análise semân
 
 - **Cache Hash Maps**: Para garantir a viabilidade do compilador perante testes massivos do Mooshak, implementámos uma camada de cache sobre as tabelas de símbolos.
     - **Indexação Global O(1)**: Através da função de dispersão `hash_str`, criámos os mapas `sys_cache` e `table_cache_map` com um tamanho de 65537 entradas. 
-    - **Pesquisa Eficiente**: Esta estrutura transforma
+    - **Pesquisa Eficiente**: Esta estrutura transforma pesquisas que seriam linearmente lentas (O(n)) em acessos praticamente instantâneos (O(1)). A função `lookup_symbol` utiliza esta cache para resolver identificadores, verificando primeiro o escopo local e depois o global, respeitando as regras de *shadowing* e a ordem de declaração.
+    - **Sobrecarga**: O sistema de cache lida nativamente com a sobrecarga de métodos (*method overloading*), armazenando as assinaturas completas (`mangled names`) para distinguir funções com o mesmo nome mas parâmetros distintos.
 
 ### 3. Geração de Código
 
