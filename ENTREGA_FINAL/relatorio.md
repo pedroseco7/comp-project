@@ -28,3 +28,19 @@ Esta secção descreve as estruturas fundamentais que suportam a análise semân
 - **Cache Hash Maps**: Para garantir a viabilidade do compilador perante testes massivos do Mooshak, implementámos uma camada de cache sobre as tabelas de símbolos.
     - **Indexação Global O(1)**: Através da função de dispersão `hash_str`, criámos os mapas `sys_cache` e `table_cache_map` com um tamanho de 65537 entradas. 
     - **Pesquisa Eficiente**: Esta estrutura transforma
+
+### 3. Geração de Código
+
+A última fase do compilador percorre a AST anotada e emite diretamente código LLVM IR equivalente ao programa fonte, sem passar por uma forma intermédia própria. A escolha do LLVM como alvo dispensou-nos da alocação manual de registos físicos, simplificando significativamente esta meta.
+
+- **Estratégia para Variáveis e Parâmetros**: Cada variável local e parâmetro recebe espaço próprio na pilha através da instrução `alloca`, sendo as leituras e escritas traduzidas em `load` e `store`. Esta abordagem foi adotada por simplificar o tratamento de atribuições repetidas à mesma variável: como cada `store` substitui o valor anterior, não é preciso reconciliar versões diferentes de uma variável após um `if` ou no fim de um ciclo. Os parâmetros são copiados para os respetivos slots no início da função para uniformizar o acesso.
+
+- **Hoisting das Alocações**: Todas as alocações são empurradas para o bloco de entrada da função através de uma pré-passagem (`print_allocas`) que percorre o corpo do método e recolhe todos os `VarDecl`, mesmo aqueles declarados em blocos. Esta decisão evita um problema concreto observado em testes iniciais: declarar variáveis dentro de um `while` faria com que `alloca` consumisse pilha a cada iteração, causando *stack overflow* em ciclos longos. Centralizar as alocações no prólogo garante que o tamanho do *frame* é fixo.
+
+- **Tradução do Fluxo de Controlo**: As construções `if-else` e `while` são partidas em blocos identificados por etiquetas sequenciais (`L0`, `L1`, ...), ligadas por `br i1` (condicional) ou `br label` (incondicional). Os operadores `&&` e `||` são implementados com avaliação em curto-circuito recorrendo a um slot auxiliar (`%sc_temp`) onde se guarda o resultado parcial, em coerência com a abordagem geral baseada em memória. Uma *flag* (`block_terminated`) impede a emissão de instruções após um `return` ou `br`, garantindo IR aceite pelo verificador do LLVM.
+
+- **Seleção de Instruções e Conversões**: Os tipos `int`, `boolean` e `double` mapeiam para `i32`, `i1` e `double`. O gerador escolhe entre instruções inteiras e de vírgula flutuante consoante os operandos: `add`/`icmp` para inteiros e booleanos, `fadd`/`fcmp` para reais. Quando uma operação mistura `int` com `double`, o operando inteiro é promovido com `sitofp`. A mesma promoção é aplicada em atribuições, `return` e passagem de argumentos.
+
+- **Mangling e Caso Especial do main**: Para suportar a sobrecarga de métodos validada na meta anterior, os nomes recebem um sufixo que codifica os tipos dos parâmetros formais (`m_factorial_i`, `m_foo_d_b`). O `main` é a única excepção: mantém o nome original e a sua assinatura `String[] args` é traduzida para o par `(i32 %argc, i8** %argv)` da convenção C, com `args.length` reduzido a `sub i32 %argc, 1` e `Integer.parseInt(args[i])` a `getelementptr` seguido de `call @atoi`.
+
+- **Literais e Saída**: As `String`s do programa são emitidas como constantes globais (`@.str.N`) e endereçadas com `getelementptr`. `System.out.print` é traduzido em chamadas a `printf` com `%d`, `%.16e` e `%s` consoante o tipo; para booleanos, a string `"true"` ou `"false"` é seleccionada em runtime através de `select i1`.
