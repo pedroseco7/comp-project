@@ -1,3 +1,5 @@
+/* Autores: Gabriel Almeida (2023226622) e Pedro Sêco (2021273328)*/
+
 %{
     struct node;
     #include <string.h>
